@@ -1,0 +1,21 @@
+✔ native ACS3 signing matches Alibaba Cloud official fixed test vector (1.805854ms)
+✔ Aliyun adapter preserves legacy SendSms template fields and accepted-code semantics with mocked transport (3.364084ms)
+✔ Aliyun is real default; gateway requires explicit selection and incomplete/unsafe provider config fails closed (0.537596ms)
+✔ SMS registration sets a bcrypt12 password; phone/password login and reset invalidate all sessions (2491.847135ms)
+✔ private files require session + owner, genuine file contents and attachment limits (712.223112ms)
+✔ attendee application and online submission are independent; draft validation and profile locking (1003.067043ms)
+✔ pending -> feedback -> supplement -> accepted uses delayed shared review-sync path (429.922254ms)
+✔ deduplicated capacity only warns, never blocks; corrections preserve separate manual attendance (783.289971ms)
+✔ config regeneration changes public content without erasing accounts, files or submitted business data (388.031971ms)
+✔ event windows, identity tampering, SMS retry limits and missing authentication fail safely (2242.835976ms)
+✔ static SPA fallback and simulator are labeled; API never returns HTML (23.261084ms)
+✔ basic document signatures distinguish PDF, valid OOXML and disguised archives (5.442629ms)
+✔ explicit CLI synchronization and periodic worker use the same persisted review queue (1496.060462ms)
+✔ embedded PostgreSQL bootstrap reuses existing cluster without reinitializing business data (448.82488ms)
+✔ persisted event slug accepts same-event regeneration and rejects a different event without data mutation (359.389369ms)
+✔ local PostgreSQL refuses an existing or unknown owner even if local PID and port are not visible (4.789059ms)
+ℹ tests 16
+ℹ pass 16
+ℹ fail 0
+ℹ skipped 0
+ℹ duration_ms 10563.8221

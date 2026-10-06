@@ -1,0 +1,34 @@
+# Local environments and caches
+.venv*/
+.cache/
+.npm-cache/
+node_modules/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Generated event instances and build output
+/generated/
+/preview/
+dist/
+.preview-build/
+offline-preview/
+
+# Runtime secrets and business data
+.env*
+!.env.example
+/template/backend/data/
+uploads/
+*.log
+*.zip
+
+# Local agent settings and reference material
+.agents/
+.codex/
+.aws/
+/vendor/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini

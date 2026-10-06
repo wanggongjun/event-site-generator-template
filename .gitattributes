@@ -1,0 +1,9 @@
+# Preserve binary assets byte for byte.
+*.pdf binary
+*.xlsx binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.woff binary
+*.woff2 binary

@@ -1,0 +1,20 @@
+{
+  "name": "generated-event-instance",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "build": "npm run build --workspace frontend",
+    "start": "node backend/start.js",
+    "demo": "node backend/start.js",
+    "test": "npm run test --workspace backend",
+    "preview:offline": "npm run preview:offline --workspace frontend && node tools/render-preview.mjs ."
+  }
+}

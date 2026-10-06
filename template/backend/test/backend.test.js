@@ -1,0 +1,290 @@
+import test, { before, after, beforeEach } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, writeFile, mkdir, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import net from 'node:net';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import pg from 'pg';
+import { createServer } from '../server.js';
+import { startLocalPostgres } from '../local-postgres.js';
+import { detectDocument } from '../files.js';
+
+let root, local, admin, server, dbUrl, origin, clock = Date.now(), phoneIndex = 100;
+const baseConfig = { event: { slug: 'test-conference', title: '测试学术会议', capacity: 1 }, attendance: {}, submission: {}, files: { maxFileBytes: 20 * 1048576, maxAttachments: 3, allowedExtensions: ['pdf', 'docx', 'pptx'] }, sync: { pollSeconds: 60 } };
+const pdf = Buffer.from('%PDF-2.0\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF\n').toString('base64');
+const freePort = async () => { const socket = net.createServer(); await new Promise(resolve => socket.listen(0, '127.0.0.1', resolve)); const port = socket.address().port; await new Promise(resolve => socket.close(resolve)); return port; };
+const schema = `test_event_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+before(async () => {
+  root = await mkdtemp(join(tmpdir(), 'event-backend-test-'));
+  await mkdir(join(root, 'dist'));
+  await writeFile(join(root, 'dist', 'index.html'), '<html><body>Event SPA</body></html>');
+  let url = process.env.TEST_DATABASE_URL;
+  if (!url) { local = await startLocalPostgres({ dataDir: join(root, 'postgres'), port: await freePort(), persistent: true }); url = local.connectionString; }
+  admin = new pg.Pool({ connectionString: url });
+  await admin.query(`CREATE SCHEMA ${schema}`);
+  const connection = new URL(url);
+  connection.searchParams.set('options', `-c search_path=${schema}`);
+  dbUrl = connection.toString();
+  await writeFile(join(root, 'config.json'), JSON.stringify(baseConfig));
+  const port = await freePort(); origin = `http://127.0.0.1:${port}`;
+  server = await createServer({ appRoot: root, databaseUrl: dbUrl, publicOrigin: origin, autoSync: false, now: () => clock, onError: error => console.error(error) });
+  await new Promise(resolve => server.listen(port, '127.0.0.1', resolve));
+});
+after(async () => {
+  await server?.shutdown();
+  if (admin) { await admin.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`); await admin.end(); }
+  await local?.stop();
+  if (root) await rm(root, { recursive: true, force: true });
+});
+beforeEach(async () => {
+  clock += 3600001;
+  await server.database.query('TRUNCATE users,sms_codes CASCADE');
+  await writeFile(join(root, 'config.json'), JSON.stringify(baseConfig));
+});
+
+async function call(path, { method = 'GET', body, cookie, badOrigin, raw = false } = {}) {
+  const response = await fetch(origin + path, { method, headers: { ...(body !== undefined ? { 'content-type': 'application/json' } : {}), ...(method !== 'GET' ? { origin: badOrigin || origin } : {}), ...(cookie ? { cookie } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) });
+  return { status: response.status, body: raw ? await response.text() : await response.json(), cookie: response.headers.get('set-cookie')?.split(';')[0], headers: response.headers };
+}
+async function account({ complete = true } = {}) {
+  const phone = `1380000${String(phoneIndex++).padStart(4, '0')}`;
+  const sms = await call('/api/auth/sms/request', { method: 'POST', body: { phone, purpose: 'register' } });
+  assert.equal(sms.status, 200); assert.equal(sms.body.mode, 'simulation'); assert.match(sms.body.simulationCode, /^\d{6}$/);
+  const registration = await call('/api/auth/register', { method: 'POST', body: { phone, password: 'Password-1234', code: sms.body.simulationCode } });
+  assert.equal(registration.status, 201);
+  assert.match(registration.headers.get('set-cookie'), /HttpOnly/); assert.match(registration.headers.get('set-cookie'), /SameSite=Strict/);
+  const user = { phone, cookie: registration.cookie, id: registration.body.user.id };
+  if (complete) {
+    const profile = await call('/api/me/profile', { method: 'PATCH', cookie: user.cookie, body: { name: '王同学', email: 'academic@example.org', organization: '示例大学', identity: '博士研究生', researchDirection: '人工智能' } });
+    assert.equal(profile.status, 200); assert.equal(profile.body.complete, true);
+  }
+  return user;
+}
+async function upload(user, name = 'paper.pdf', contentBase64 = pdf) {
+  const response = await call('/api/me/files', { method: 'POST', cookie: user.cookie, body: { name, contentBase64 } });
+  assert.equal(response.status, 201); return response.body.file;
+}
+async function draft(user, overrides = {}) {
+  const file = await upload(user);
+  const body = { title: '学术研究题目', abstract: '本研究提出并验证新的方法。', keywords: ['算法', '实验'], authors: [{ name: '王同学', affiliation: '示例大学' }], presenter: '王同学', note: '', attachmentIds: [file.id], ...overrides };
+  const response = await call('/api/me/submission', { method: 'PUT', cookie: user.cookie, body });
+  assert.equal(response.status, 200); return response.body.submission;
+}
+async function submit(user) { await draft(user); const response = await call('/api/me/submission/submit', { method: 'POST', cookie: user.cookie, body: {} }); assert.equal(response.status, 200); return response.body.submission; }
+async function review(user, kind, decision, feedback = '') {
+  const response = await call('/api/simulation/reviews', { method: 'POST', body: { phone: user.phone, kind, decision, feedback } });
+  assert.equal(response.status, 202); return response;
+}
+async function sync(force = true) { const response = await call('/api/simulation/sync', { method: 'POST', body: { force } }); assert.equal(response.status, 200); return response.body; }
+
+ test('SMS registration sets a bcrypt12 password; phone/password login and reset invalidate all sessions', async () => {
+  const user = await account();
+  const saved = (await server.database.query('SELECT password_hash FROM users WHERE id=$1', [user.id])).rows[0];
+  assert.match(saved.password_hash, /^\$2[ab]\$12\$/);
+  const login = await call('/api/auth/login', { method: 'POST', body: { phone: user.phone, password: 'Password-1234' } });
+  assert.equal(login.status, 200);
+  const sms = await call('/api/auth/sms/request', { method: 'POST', body: { phone: user.phone, purpose: 'reset' } });
+  assert.equal(sms.status, 200);
+  const reset = await call('/api/auth/reset', { method: 'POST', body: { phone: user.phone, code: sms.body.simulationCode, password: 'Changed-Password-1234' } });
+  assert.equal(reset.status, 200);
+  assert.equal((await call('/api/me/profile', { cookie: user.cookie })).status, 401);
+  assert.equal((await call('/api/me/profile', { cookie: login.cookie })).status, 401);
+  assert.equal((await call('/api/auth/login', { method: 'POST', body: { phone: user.phone, password: 'Password-1234' } })).status, 401);
+  assert.equal((await call('/api/auth/login', { method: 'POST', body: { phone: user.phone, password: 'Changed-Password-1234' } })).status, 200);
+  assert.equal((await call('/api/auth/reset', { method: 'POST', body: { phone: user.phone, code: sms.body.simulationCode, password: 'Third-Password-1234' } })).status, 400);
+});
+
+test('private files require session + owner, genuine file contents and attachment limits', async () => {
+  const owner = await account(), other = await account(), file = await upload(owner);
+  assert.equal((await call(`/api/me/files/${file.id}`, { raw: true })).status, 401);
+  assert.equal((await call(`/api/me/files/${file.id}`, { cookie: other.cookie, raw: true })).status, 404);
+  const downloaded = await call(`/api/me/files/${file.id}`, { cookie: owner.cookie, raw: true });
+  assert.equal(downloaded.status, 200); assert.match(downloaded.body, /^%PDF-2\.0/); assert.match(downloaded.headers.get('content-disposition'), /^attachment/);
+  assert.equal((await call('/api/me/files', { method: 'POST', cookie: owner.cookie, body: { name: 'fake.pdf', contentBase64: Buffer.from('not a PDF').toString('base64') } })).status, 400);
+  assert.equal((await call('/api/me/submission', { method: 'PUT', cookie: other.cookie, body: { attachmentIds: [file.id] } })).status, 403);
+  const files = [file, await upload(owner), await upload(owner), await upload(owner)];
+  assert.equal((await call('/api/me/submission', { method: 'PUT', cookie: owner.cookie, body: { attachmentIds: files.map(x => x.id) } })).status, 400);
+  assert.equal((await call('/api/me/files', { method: 'POST', cookie: owner.cookie, badOrigin: 'https://evil.example', body: { name: 'a.pdf', contentBase64: pdf } })).status, 403);
+});
+
+test('attendee application and online submission are independent; draft validation and profile locking', async () => {
+  const attendee = await account();
+  assert.equal((await call('/api/me/submission', { cookie: attendee.cookie })).body.submission, null);
+  const application = await call('/api/me/attendance', { method: 'POST', cookie: attendee.cookie, body: { motivation: '交流学习' } });
+  assert.equal(application.status, 201); assert.equal(application.body.attendance.status, 'under_review');
+  assert.equal((await call('/api/me/profile', { method: 'PATCH', cookie: attendee.cookie, body: { name: '更改名字' } })).status, 409);
+  assert.equal((await call('/api/me/attendance', { method: 'POST', cookie: attendee.cookie, body: {} })).status, 409);
+  const author = await account();
+  const submitted = await submit(author); assert.equal(submitted.status, 'under_review');
+  assert.equal((await call('/api/me/attendance', { cookie: author.cookie })).body.attendance.status, null);
+  const incomplete = await account({ complete: false }); await draft(incomplete);
+  assert.equal((await call('/api/me/submission/submit', { method: 'POST', cookie: incomplete.cookie, body: {} })).status, 409);
+});
+
+test('pending -> feedback -> supplement -> accepted uses delayed shared review-sync path', async () => {
+  const user = await account(); const initialSubmission = await submit(user); assert.equal(initialSubmission.reviewRound, 1);
+  await review(user, 'submission', 'needs_materials', '请补充完整版');
+  assert.equal((await sync(false)).applied, 0);
+  assert.equal((await call('/api/me/submission', { cookie: user.cookie })).body.submission.status, 'under_review');
+  clock += 60001; assert.equal((await sync(false)).applied, 1);
+  let submission = (await call('/api/me/submission', { cookie: user.cookie })).body.submission;
+  assert.equal(submission.status, 'needs_materials'); assert.equal(submission.feedback, '请补充完整版');
+  assert.equal((await call('/api/me/submission', { method: 'PUT', cookie: user.cookie, body: submission })).status, 409);
+  assert.equal((await call('/api/me/submission/supplement', { method: 'POST', cookie: user.cookie, body: { title: '不允许改标题' } })).status, 400);
+  const replacement = await upload(user, 'replacement.pdf');
+  const supplement = await call('/api/me/submission/supplement', { method: 'POST', cookie: user.cookie, body: { note: '已补充全文', attachmentIds: [replacement.id] } });
+  assert.equal(supplement.status, 200); assert.equal(supplement.body.submission.status, 'under_review'); assert.equal(supplement.body.submission.title, submission.title); assert.equal(supplement.body.submission.reviewRound, 2);
+  await review(user, 'submission', 'accepted', '录用'); await sync();
+  submission = (await call('/api/me/submission', { cookie: user.cookie })).body.submission;
+  assert.equal(submission.status, 'accepted'); assert.equal(submission.reviewRound, 2);
+  const attendance = (await call('/api/me/attendance', { cookie: user.cookie })).body.attendance;
+  assert.equal(attendance.attendanceGranted, true); assert.deepEqual(attendance.grantSources, ['accepted_submission']);
+  assert.equal((await call('/api/me/submission/submit', { method: 'POST', cookie: user.cookie, body: {} })).status, 409);
+  assert.equal((await call('/api/me/submission/supplement', { method: 'POST', cookie: user.cookie, body: { note: '录用后修改' } })).status, 409);
+  await review(user, 'submission', 'rejected', '更正录用结果'); await sync();
+  const corrected = (await call('/api/me/submission', { cookie: user.cookie })).body.submission;
+  assert.equal(corrected.status, 'rejected'); assert.equal(corrected.reviewRound, 2);
+});
+
+test('deduplicated capacity only warns, never blocks; corrections preserve separate manual attendance', async () => {
+  const first = await account(), second = await account();
+  await call('/api/me/attendance', { method: 'POST', cookie: first.cookie, body: {} });
+  await submit(first); await submit(second);
+  await review(first, 'attendance', 'accepted'); await review(first, 'submission', 'accepted'); await sync();
+  let data = (await call('/api/me/attendance', { cookie: first.cookie })).body;
+  assert.equal(data.attendanceStats.total, 1); assert.equal(data.attendanceStats.capacityWarning, true); assert.equal(data.attendance.grantSources.length, 2);
+  await review(second, 'submission', 'accepted'); await sync();
+  data = (await call('/api/me/attendance', { cookie: first.cookie })).body; assert.equal(data.attendanceStats.total, 2);
+  await review(first, 'submission', 'rejected', '更正原结果'); await sync();
+  data = (await call('/api/me/attendance', { cookie: first.cookie })).body; assert.equal(data.attendanceStats.total, 2); assert.deepEqual(data.attendance.grantSources, ['manual_attendance']);
+  await review(first, 'attendance', 'rejected'); await sync();
+  data = (await call('/api/me/attendance', { cookie: first.cookie })).body; assert.equal(data.attendanceStats.total, 1); assert.equal(data.attendance.attendanceGranted, false);
+  await review(second, 'submission', 'rejected'); await sync();
+  assert.equal((await call('/api/me/attendance', { cookie: second.cookie })).body.attendanceStats.total, 0);
+  const audits = await server.database.query('SELECT count(*)::int AS count FROM review_history'); assert.equal(audits.rows[0].count, 6);
+});
+
+test('config regeneration changes public content without erasing accounts, files or submitted business data', async () => {
+  const user = await account(); await submit(user); await review(user, 'submission', 'accepted'); await sync();
+  await writeFile(join(root, 'config.json'), JSON.stringify({ ...baseConfig, event: { ...baseConfig.event, title: '更新后的活动标题', capacity: 100 } }));
+  const publicData = await call('/api/public/config'); assert.equal(publicData.body.config.event.title, '更新后的活动标题');
+  const submitted = (await call('/api/me/submission', { cookie: user.cookie })).body.submission; assert.equal(submitted.status, 'accepted');
+  assert.equal((await call('/api/me/files/' + submitted.attachmentIds[0], { cookie: user.cookie, raw: true })).status, 200);
+  const rows = await server.database.query('SELECT count(*)::int AS count FROM users'); assert.equal(rows.rows[0].count, 1);
+  const restarted = await createServer({ appRoot: root, databaseUrl: dbUrl, publicOrigin: origin, autoSync: false, now: () => clock });
+  assert.equal((await restarted.database.query('SELECT submission_status FROM business WHERE user_id=$1', [user.id])).rows[0].submission_status, 'accepted');
+  await restarted.shutdown();
+});
+
+test('event windows, identity tampering, SMS retry limits and missing authentication fail safely', async () => {
+  const user = await account();
+  assert.equal((await call('/api/me/profile', { method: 'PATCH', cookie: user.cookie, body: { phone: '13900009999' } })).status, 400);
+  const config = { ...baseConfig, submission: { closeAt: new Date(clock - 1).toISOString() } }; await writeFile(join(root, 'config.json'), JSON.stringify(config));
+  assert.equal((await call('/api/me/submission', { method: 'PUT', cookie: user.cookie, body: {} })).status, 409);
+  assert.equal((await call('/api/me/attendance', { method: 'POST', cookie: user.cookie, body: {} })).status, 201);
+  assert.equal((await call('/api/me/profile')).status, 401);
+  const sms = await call('/api/auth/sms/request', { method: 'POST', body: { phone: user.phone, purpose: 'reset' } });
+  assert.equal((await call('/api/auth/sms/request', { method: 'POST', body: { phone: user.phone, purpose: 'reset' } })).status, 429);
+  const wrong = sms.body.simulationCode === '000000' ? '111111' : '000000';
+  for (let i = 0; i < 5; i++) assert.equal((await call('/api/auth/reset', { method: 'POST', body: { phone: user.phone, password: 'Changed-Password-1234', code: wrong } })).status, 400);
+  assert.equal((await call('/api/auth/reset', { method: 'POST', body: { phone: user.phone, password: 'Changed-Password-1234', code: sms.body.simulationCode } })).status, 400);
+});
+
+test('static SPA fallback and simulator are labeled; API never returns HTML', async () => {
+  const spa = await call('/unseen-client-route', { raw: true }); assert.equal(spa.status, 200); assert.match(spa.body, /Event SPA/);
+  const sim = await call('/simulation', { raw: true }); assert.equal(sim.status, 200); assert.match(sim.body, /仅模拟/);
+  assert.equal((await call('/api/missing')).status, 404);
+  const state = await call('/api/simulation/state'); assert.equal(state.body.simulation, true); assert.match(state.body.warning, /模拟/);
+  const real = await createServer({ appRoot: root, databaseUrl: dbUrl, publicOrigin: 'https://event.example.org', mode: 'real', smsAdapter: { send: async () => ({ mode: 'real' }) }, feishuAdapter: { pull: async () => [], export: async () => {} }, autoSync: false });
+  const port = await freePort(); await new Promise(resolve => real.listen(port, '127.0.0.1', resolve));
+  const response = await fetch(`http://127.0.0.1:${port}/api/simulation/state`); assert.equal(response.status, 404);
+  await real.shutdown();
+});
+
+test('basic document signatures distinguish PDF, valid OOXML and disguised archives', () => {
+  assert.equal(detectDocument(Buffer.from(pdf, 'base64'), 'paper.pdf'), 'application/pdf');
+  assert.equal(detectDocument(Buffer.from('PKnot-real'), 'slides.pptx'), null);
+  assert.equal(detectDocument(Buffer.from(pdf, 'base64'), 'paper.docx'), null);
+  const zip = entries => {
+    const parts = [], central = []; let offset = 0;
+    for (const [name, text] of entries) {
+      const filename = Buffer.from(name), data = Buffer.from(text), header = Buffer.alloc(30); header.writeUInt32LE(0x04034b50); header.writeUInt16LE(20, 4); header.writeUInt32LE(data.length, 18); header.writeUInt32LE(data.length, 22); header.writeUInt16LE(filename.length, 26);
+      parts.push(header, filename, data);
+      const c = Buffer.alloc(46); c.writeUInt32LE(0x02014b50); c.writeUInt16LE(20, 6); c.writeUInt32LE(data.length, 20); c.writeUInt32LE(data.length, 24); c.writeUInt16LE(filename.length, 28); c.writeUInt32LE(offset, 42); central.push(c, filename); offset += header.length + filename.length + data.length;
+    }
+    const directory = Buffer.concat(central), end = Buffer.alloc(22); end.writeUInt32LE(0x06054b50); end.writeUInt16LE(entries.length, 8); end.writeUInt16LE(entries.length, 10); end.writeUInt32LE(directory.length, 12); end.writeUInt32LE(offset, 16); return Buffer.concat([...parts, directory, end]);
+  };
+  const docx = zip([['[Content_Types].xml', '<Types>application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml</Types>'], ['word/document.xml', '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"/>']]);
+  assert.equal(detectDocument(docx, 'paper.docx'), 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+  const pptx = zip([['[Content_Types].xml', '<Types>application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml</Types>'], ['ppt/presentation.xml', '<p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"/>']]);
+  assert.equal(detectDocument(pptx, 'slides.pptx'), 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
+});
+
+
+test('explicit CLI synchronization and periodic worker use the same persisted review queue', async () => {
+  const user = await account(); await submit(user);
+  await review(user, 'submission', 'needs_materials', 'CLI请求补材料');
+  const command = await promisify(execFile)(process.execPath, [join(import.meta.dirname, '..', 'sync.js'), '--force'], { env: { ...process.env, APP_MODE: 'simulation', APP_ROOT: root, DATABASE_URL: dbUrl, PUBLIC_ORIGIN: origin } });
+  assert.equal(JSON.parse(command.stdout.trim()).applied, 1);
+  assert.equal((await call('/api/me/submission', { cookie: user.cookie })).body.submission.status, 'needs_materials');
+  await call('/api/me/submission/supplement', { method: 'POST', cookie: user.cookie, body: { note: '补材料已完成' } });
+  const port = await freePort(), workerOrigin = `http://127.0.0.1:${port}`;
+  const worker = await createServer({ appRoot: root, databaseUrl: dbUrl, publicOrigin: workerOrigin, env: { SYNC_POLL_SECONDS: '1' }, now: () => clock });
+  await new Promise(resolve => worker.listen(port, '127.0.0.1', resolve));
+  try {
+    const response = await fetch(workerOrigin + '/api/simulation/reviews', { method: 'POST', headers: { origin: workerOrigin, 'content-type': 'application/json' }, body: JSON.stringify({ phone: user.phone, kind: 'submission', decision: 'accepted', feedback: '周期同步录用' }) });
+    assert.equal(response.status, 202); clock += 1001;
+    const deadline = Date.now() + 5000;
+    let status;
+    while (Date.now() < deadline) {
+      status = (await call('/api/me/submission', { cookie: user.cookie })).body.submission.status;
+      if (status === 'accepted') break;
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    assert.equal(status, 'accepted');
+  } finally { await worker.shutdown(); }
+});
+
+test('embedded PostgreSQL bootstrap reuses existing cluster without reinitializing business data', async () => {
+  const dataDir = join(root, 'restart-postgres'), port = await freePort();
+  let cluster = await startLocalPostgres({ dataDir, port, persistent: true });
+  let pool = new pg.Pool({ connectionString: cluster.connectionString });
+  pool.on('error', error => { if (!pool.ending) throw error; });
+  try {
+    await pool.query("CREATE TABLE keep_record(value text); INSERT INTO keep_record VALUES('persistent')");
+    await pool.end(); await cluster.stop();
+    cluster = await startLocalPostgres({ dataDir, port, persistent: true });
+    pool = new pg.Pool({ connectionString: cluster.connectionString });
+    pool.on('error', error => { if (!pool.ending) throw error; });
+    assert.equal((await pool.query('SELECT value FROM keep_record')).rows[0].value, 'persistent');
+  } finally { await pool.end(); await cluster.stop(); }
+});
+
+
+test('persisted event slug accepts same-event regeneration and rejects a different event without data mutation', async () => {
+  const user = await account(); await submit(user);
+  const before = (await server.database.query('SELECT to_jsonb(u) AS data FROM users u WHERE id=$1', [user.id])).rows[0].data;
+  await writeFile(join(root, 'config.json'), JSON.stringify({ ...baseConfig, event: { ...baseConfig.event, title: '同一活动更新' } }));
+  const same = await createServer({ appRoot: root, databaseUrl: dbUrl, publicOrigin: origin, autoSync: false }); await same.shutdown();
+  await writeFile(join(root, 'config.json'), JSON.stringify({ ...baseConfig, event: { ...baseConfig.event, slug: 'another-conference' } }));
+  await assert.rejects(createServer({ appRoot: root, databaseUrl: dbUrl, publicOrigin: origin, autoSync: false }), /requires an independent database/);
+  const after = (await server.database.query('SELECT to_jsonb(u) AS data FROM users u WHERE id=$1', [user.id])).rows[0].data;
+  assert.deepEqual(after, before);
+  assert.equal((await server.database.query("SELECT value FROM app_metadata WHERE key='event_slug'")).rows[0].value, 'test-conference');
+  assert.equal((await server.database.query('SELECT submission_status FROM business WHERE user_id=$1', [user.id])).rows[0].submission_status, 'under_review');
+  assert.equal((await call('/api/public/config')).status, 500); // Existing process also refuses a swapped identity.
+  await writeFile(join(root, 'config.json'), JSON.stringify(baseConfig));
+});
+
+
+test('local PostgreSQL refuses an existing or unknown owner even if local PID and port are not visible', async () => {
+  const dataDir = join(root, 'unknown-owner'); await mkdir(dataDir);
+  await writeFile(join(dataDir, 'postmaster.pid'), '999999\nshared-namespace-owner\n');
+  const before = await import('node:fs/promises').then(fs => fs.readFile(join(dataDir, 'postmaster.pid'), 'utf8'));
+  await assert.rejects(startLocalPostgres({ dataDir, port: await freePort() }), /ownership is active or unknown/);
+  const after = await import('node:fs/promises').then(fs => fs.readFile(join(dataDir, 'postmaster.pid'), 'utf8'));
+  assert.equal(after, before);
+});

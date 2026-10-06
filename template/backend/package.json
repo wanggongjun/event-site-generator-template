@@ -1,0 +1,19 @@
+{
+  "name": "event-template-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node start.js",
+    "test": "node --test test/*.test.js",
+    "sync": "node sync.js"
+  },
+  "dependencies": {
+    "bcryptjs": "3.0.2",
+    "pg": "8.16.3",
+    "embedded-postgres": "16.14.0-beta.17"
+  }
+}
