@@ -3,7 +3,7 @@ import pg from 'pg';
 import { createServer } from './server.js';
 import { startLocalPostgres } from './local-postgres.js';
 let local, databaseUrl = process.env.DATABASE_URL;
-if (!databaseUrl && (process.env.APP_MODE || 'simulation') === 'simulation') {
+if (!databaseUrl && (process.env.APP_MODE || 'real') === 'simulation') {
   const port = Number(process.env.PG_PORT || 55432);
   databaseUrl = `postgresql://event_demo:local_demo_only@127.0.0.1:${port}/postgres`;
   const probe = new pg.Pool({ connectionString: databaseUrl, connectionTimeoutMillis: 1500 });

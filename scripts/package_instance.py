@@ -2,17 +2,18 @@
 """Package one generated application; never include business data or runtime secrets."""
 from pathlib import Path, PurePosixPath
 import argparse, json, shutil, zipfile, hashlib
-BLOCK={'data','uploads','node_modules','.npm-cache','.cache','.venv','test-evidence','.preview-build','.frontend-test-build','.git','__pycache__'}
+BLOCK={'data','uploads','node_modules','.npm-cache','.cache','.venv','test-evidence','offline-preview','.page-test-build','.preview-build','.frontend-test-build','.git','__pycache__'}
 def main():
  p=argparse.ArgumentParser(description='打包生成实例、物料和可选只读输入快照，排除业务数据。')
  p.add_argument('--instance',type=Path,required=True);p.add_argument('--destination',type=Path,required=True);p.add_argument('--input',type=Path);p.add_argument('--zip',type=Path);a=p.parse_args();app=a.instance.resolve();dest=a.destination.absolute()
  if dest.is_symlink() or (dest.exists() and (not dest.is_dir() or any(dest.iterdir()))):p.error('交付目录必须不存在或为空')
+ dest=dest.resolve()
  if dest==app or app in dest.parents:p.error('交付目录不得位于实例内')
  try:m=json.loads((app/'manifest.json').read_text(encoding='utf-8'))
  except (OSError,ValueError):p.error('需要有效生成器manifest.json')
  if m.get('generator')!='canonical-xlsx-event-template':p.error('目录不是本生成器的实例')
  entries=set(m.get('artifacts',[]))|{'manifest.json'}
- for folder in ['dist','offline-preview']:
+ for folder in ['dist']:
   if (app/folder).is_dir():entries.update(f.relative_to(app).as_posix() for f in (app/folder).rglob('*') if f.is_file())
  selected=[]
  for n in sorted(entries):

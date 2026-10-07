@@ -1,79 +1,66 @@
-# Event backend
+# 独立活动后端 v3
 
-Node 24, PostgreSQL (`pg`), legacy-compatible bcrypt cost 12 (`bcryptjs`). No SQLite fallback. Authentication remains SMS registration + password setting, phone/password login, and SMS password reset; there is no OTP-only login. A generated `config.json` is read on every request. Business data and private file bytes live in the separate PostgreSQL database. Regenerating event content never executes a database reset.
+Node24 + PostgreSQL。默认真实短信与飞书三表；不创建网站admin/账号。活动内容只由唯一XLSX生成，飞书只处理审核/私有问题回复。密钥放部署Secret/env，原`.env.example`不含可用凭据。
 
-## Unconfirmed event facts
+## 启动与接入
 
-Missing facts are represented honestly: `event.capacity` may be `null`; attendance and submission `openAt`/`closeAt` may be `null`. `event.startDate`/`endDate` carry calendar-date precision; exact `startAt`/`endAt` are optional and never synthesized by the backend. Do not use capacity1, epoch dates, fabricated end-of-day times or a guessed application window to make a handbook-only instance run.
-
-`GET /api/public/config` includes factual `config.readiness` and an identical top-level `readiness`: `{mode:"preview"|"ready",unresolved:[{key,reason}],attendanceEnabled,submissionEnabled}`. The backend recalculates this from the current facts on every request and never trusts a stale generated `ready` flag. `runtime.mode` is separately `simulation` or `real`; a real adapter setup does not turn unknown facts into a ready event. Conversely, ready facts do not establish live-provider or production acceptance. Readiness describes confirmed configuration, not whether today's time is inside the window.
-
-Known capacity must be a positive integer. Each enabled application module needs a valid, offset-qualified opening and closing timestamp with opening strictly before closing. Missing capacity disables both final attendance and final submission, because accepted submissions grant attendance. Missing/invalid windows disable only the relevant module. Final attendance, final submission and supplement resubmission return HTTP409 with `error.code="EVENT_FACTS_UNRESOLVED"`, an actionable Chinese `message` and `error.unresolved:[{key,reason}]`. Complete the identified organizer facts and regenerate the same event configuration; no database reset is needed. Optional `submission.supplementCloseAt` retains the existing fallback to confirmed `submission.closeAt`; an unconfirmed base window cannot authorize a supplement.
-
-Preview still permits public content, SMS registration, password login/reset, private file upload/download, profile completion and submission draft preparation. Existing ownership, quotas, profile locks and post-submit editing restrictions remain in force. Known opening/closing bounds still prevent draft editing outside the window; unconfirmed bounds only permit preparation, never final submission. Drafts/uploads are private PostgreSQL records and are not exported to Feishu until an application is submitted. An explicitly disabled module still refuses its draft route.
-
-Regeneration to unknown facts does not rewrite submitted records, private files or existing grants. Staff review and corrections continue through the existing synchronization path. With unknown capacity, approved grants are still counted by distinct account, `attendanceStats.capacity` is `null` and `capacityWarning` is `false`; capacity is always a soft warning, never a staff-approval gate.
-
-## Start
-
-For a local demo, run `npm start` without DATABASE_URL: the bundled embedded PostgreSQL starts on loopback port55432 with persistent data at `$APP_ROOT/backend/data/postgres`. Set `PG_PORT` or `PG_DATA_DIR` to override. This is a real PostgreSQL16 database, not an in-memory mock. Run exactly one owner for each data directory. Stop it with Ctrl+C or SIGTERM in its original terminal, wait for the process to exit and the PostgreSQL shutdown log, then regenerate/restart. A different terminal/tool namespace may not see the original PID or TCP listener while sharing its files. Startup refuses any existing postmaster.pid as active or unknown ownership; it never deletes the marker, resets data or tries recovery. An unexpected crash/stale marker or startup corruption requires operator diagnosis with the data preserved. The local-only demo credentials are not production credentials. For an existing PostgreSQL service or real deployment, set DATABASE_URL and the variables in `.env.example` in your shell (Node does not load this file automatically). Real mode never silently starts a demo database. `APP_ROOT` is the generated event's filesystem root; the defaults are `$APP_ROOT/config.json` and `$APP_ROOT/dist`. Optional `EVENT_CONFIG_PATH` and `STATIC_DIR` override those locations. The schema is initialized without deleting existing records. Use one database per event. A persisted event_slug guard claims each brand-new database for config.event.slug and rejects startup if another event tries to reuse it. Same-slug content updates remain valid. A nonempty older database without event metadata is refused, never silently claimed or reset; it requires an explicit operator migration or a separate database.
-
-Simulation is the default and `start.js` refuses to expose it on non-loopback interfaces. It sends no SMS and writes no Feishu data. SMS request responses visibly include `simulationCode`. Open `/simulation` for the local, labeled review simulator. Queue a result, wait approximately `sync.pollSeconds` (default 60), or explicitly sync with the UI button. `npm run sync -- --force` processes queued simulation commands immediately through the same review-application function. Without `--force`, normal due-time rules apply. `/api/simulation/*` is unavailable in real mode.
-
-## API
-
-Every mutation uses JSON and requires `Origin` to exactly match `PUBLIC_ORIGIN`. Browser same-origin fetch supplies this. Errors are `{error:{code,message}}`, with `unresolved` added for unconfirmed event facts. Authentication uses the `event_session` HttpOnly/SameSite=Strict cookie; real mode adds Secure. Never copy cookie or provider secrets into configuration.
-
-- `GET /api/public/config` → `{config,readiness,runtime:{mode,smsMode,feishuMode,pollSeconds}}`; `config.readiness` is identical to top-level `readiness`
-- `POST /api/auth/sms/request` `{phone,purpose:"register"|"reset"}` → `{ok,mode,expiresIn,retryAfter}` and simulation-only `simulationCode` and warning
-- `POST /api/auth/register` `{phone,password,code}` → `{user:{id,phone},needsProfile:true}`, signs in
-- `POST /api/auth/login` `{phone,password}` → `{user,needsProfile}`
-- `POST /api/auth/reset` `{phone,password,code}` → `{ok:true}`, invalidates every session for this account; login again
-- `POST /api/auth/logout` `{}` → `{ok:true}`
-- `GET/PATCH /api/me/profile` → `{profile,complete,editable}`. Shared fields: name, verified phone (read-only), email, organization, identity (default 研究人员), researchDirection, optional department/job/personalIntroduction. Profile is editable until either application is submitted.
-- `GET /api/me/attendance` → `{attendance,attendanceStats}`
-- `POST /api/me/attendance` `{motivation?:string}` → `{attendance,attendanceStats}`; no submission prerequisite
-- `GET/PUT /api/me/submission` → `{submission}`; `null` before first draft. PUT draft fields: title, abstract, keywords:string[], authors:[{name,affiliation}], presenter:string, note, attachmentIds:string[]. Submit requires all main fields and at least one attachment.
-- `POST /api/me/submission/submit` `{}` → `{submission}`; no attendee prerequisite
-- `POST /api/me/submission/supplement` `{note?,attachmentIds?}` → `{submission}`; only allowed in needs_materials, and only these fields may change. It returns the record to under_review.
-- `POST /api/me/files` `{name,contentBase64}` → `{file:{id,name,mime,size}}`; default 20MiB/file and PDF/DOCX/PPTX; at most 3 attached per submission (30 stored files/account to permit replacements)
-- `GET /api/me/files/:id` → authenticated owner-only attachment download. IDs are never public download links.
-- `GET /api/simulation/state` → labeled local-only account/review state (never password hashes, sessions or file bytes)
-- `POST /api/simulation/reviews` `{phone,kind:"attendance"|"submission",decision:"accepted"|"rejected"|"needs_materials",feedback}` → delayed queue result; attendance does not allow needs_materials
-- `POST /api/simulation/sync` `{force?:true}` → applied count
-
-Submission output contains all draft fields plus status, reviewRound, feedback, attachment metadata, updatedAt and submittedAt. Draft reviewRound is0; first submission sets1; each needs_materials supplement increments by1; staff corrections keep the current round. Allowed statuses: draft, under_review, needs_materials, accepted, rejected. No withdrawal and no normal post-submit edits. One business record and submission per verified phone account. Review corrections may change terminal states.
-
-Attendance output: status (manual application only), motivation, feedback, updatedAt, attendanceGranted, grantSources. Sources independently track manual_attendance and accepted_submission. Accepted submissions immediately grant attendance; rejecting/correcting that submission removes only its automatic grant. Shared total counts distinct account/person IDs across both sources; capacityWarning is raised at or above capacity and is informational and never blocks approval. Counts can overlap and must not be summed.
-
-## Optional real adapters (not live-tested)
-
-Real mode fails closed unless real SMS and Feishu settings are present and PUBLIC_ORIGIN is HTTPS. It has no simulator endpoints and no exposed SMS codes. Configure real integrations and run staging acceptance tests before public launch. Credentials must be obtained and managed by the operator outside event content.
-
-Real SMS defaults to direct Aliyun SendSms, preserving the original provider's SignName, TemplateCode, configurable template variable key and Code=OK acceptance. The SDK transport was refactored into native Node crypto/fetch using current official ACS3-HMAC-SHA256 signing, so an extra SMS gateway or SDK package is not required. Set SMS_ALIYUN_ACCESS_KEY_ID, SMS_ALIYUN_ACCESS_KEY_SECRET, SMS_ALIYUN_SIGN_NAME and SMS_ALIYUN_TEMPLATE_CODE. SMS_ALIYUN_TEMPLATE_PARAM_KEY defaults to code; SMS_ALIYUN_ENDPOINT defaults to dysmsapi.aliyuncs.com; SMS_ALIYUN_REGION_ID defaults to cn-hangzhou. Optional SMS_ALIYUN_SECURITY_TOKEN supports operator-supplied STS credentials. The endpoint is restricted to official HTTPS dysmsapi.aliyuncs.com hosts. The operator must have an authorized Aliyun RAM identity with dysms:SendSms access and an approved signature/template that matches the chosen verification-code variable. No credentials, provider account, approved template or paid SMS service are bundled. Live delivery, tenant permissions and template approval remain untested. SendSms is not idempotent, so an uncertain timeout is not automatically retried.
-
-Provenance: [original provider at the pinned source commit](https://github.com/TashanGKD/panshi-ai4s-camp/blob/b743737b4144052579fcdb740719ad6b3b3d07a3/apps/api/src/modules/identity/aliyun-verification-provider.ts), [original SDK wrapper](https://github.com/TashanGKD/panshi-ai4s-camp/blob/b743737b4144052579fcdb740719ad6b3b3d07a3/apps/api/src/modules/sms/aliyun-client.ts). Native transport follows [official ACS3 signing](https://help.aliyun.com/zh/sdk/product-overview/v3-request-structure-and-signature) and [official SendSms metadata](https://api.aliyun.com/meta/v1/products/Dysmsapi/versions/2017-05-25/apis/SendSms/api). Tests match the official fixed signature vector and exercise a mocked transport only.
-
-Only when explicitly selected with SMS_PROVIDER=http, the optional generic adapter calls the operator's HTTPS SMS_SEND_URL with Bearer SMS_API_KEY, JSON {phone,purpose,code,templateId}. That gateway must return a 2xx response only after accepting delivery. This is an alternative integration, not an additional required dependency.
-
-The optional Feishu adapter uses official tenant-token, Bitable-record and Drive-media endpoints. Create two tables, Attendance and Submission, with these exact fields: 用户ID (text), 手机号 (text), 姓名 (text), 单位 (text), 邮箱 (text), 职业阶段 (text), 审核状态 (single select), 反馈 (text), 资料JSON (multiline text). Attendance also has 报名原因 (multiline text). Submission also has 标题 (text), 审核轮次 (number) and 附件 (attachment). 审核状态 values must be under_review, needs_materials, accepted, rejected. Staff change 审核状态 and 反馈. Credentials need only the corresponding Bitable read/write and media-upload permissions, and access to these tables. Registration/profile records remain private in PostgreSQL until an application is submitted; exporting includes the shared profile and that application, and submission files are uploaded privately to Feishu media.
-
-Each periodic cycle pulls changed review decisions, applies them transactionally with an audit history, then exports changed application rows. The application data remains authoritative in PostgreSQL; canonical event content is never imported from Feishu. The fixed schema is deliberately not a general form/workflow engine. Live token scopes, table permissions, pagination and attachment uploads must be verified against the specific Feishu tenant. Feedback fields should be plain text. `FEISHU_MODE` defaults to real in real mode.
-
-## Security and operation
-
-Passwords are bcrypt cost12 and limited to 8–72 UTF-8 bytes to avoid truncation. SMS codes expire after10 minutes, are salted/hashed, single-use and lock after five wrong attempts. Minimal per-IP/per-phone throttling is in-process; production multi-instance deployments should add shared edge throttling. Session tokens are stored hashed in PostgreSQL and expire after7 days. Reset deletes all current sessions. Only owners can attach/read files. PDF signatures/EOF and bounded OOXML ZIP/XML signatures are inspected; this is basic true-content checking, not an antivirus service. Consider isolated malware scanning before a production event accepts untrusted documents. Backend never extracts archives, serves upload paths or publishes attachment URLs.
-
-The static frontend is served with SPA fallback from `dist`; `/api` never falls back to HTML. TLS should terminate at a trusted reverse proxy and preserve same-origin behavior. In real mode configure HTTPS, backup the PostgreSQL database, restrict its network access, and grant the application DB account only the event database. No old admin, payments, invoices, tutoring, evening sessions or check-in are included.
-
-Backend integration tests automatically start a temporary local PostgreSQL unless `TEST_DATABASE_URL` points to a disposable PostgreSQL database. Tests create and drop a uniquely named schema only inside that explicitly supplied test database. There are no real provider tests.
-
-The v2 regression covers unconfirmed capacity/windows refusing final applications while auth, profile, draft and file preparation remain available; per-module readiness; malformed/date-only/backwards windows; same-event regeneration preserving rows and files; and review grants/corrections with unknown capacity. All previous complete-fact business mechanics and unknown-owner PostgreSQL guards remain tested. The baseline test fixture supplies explicit opening/closing windows, rather than relying on an omitted window being treated as unrestricted.
-
-Optional repository-level lifecycle regression, after the documented project venv setup and npm install in one generated instance:
+实例根先`npm ci`、`npm run build`。按`.env.example`安全提供PUBLIC_ORIGIN、DATABASE_URL、SMS provider和既有FEISHU应用。PUBLIC_ORIGIN须真实HTTPS且精确匹配浏览器Origin，三张table ID必须不同。
 
 ```sh
-node template/backend/test/shutdown-lifecycle.mjs /absolute/path/to/a-new-fixture generated/<event.slug> .venv/bin/python
+node --env-file=.env.production backend/feishu-init.js --plan
+node --env-file=.env.production backend/feishu-init.js --dry-run
+# 明确授权指定base及plan新增项后：
+node --env-file=.env.production backend/feishu-init.js --apply --authorize-base=<plan appToken>
+node --env-file=.env.production --env-file=.env.feishu.ids backend/check.js
+node --env-file=.env.production --env-file=.env.feishu.ids backend/start.js
 ```
 
-Run this from the reusable package root. Windows uses `.\.venv\Scripts\python.exe` for the final argument. The second path is an existing generated instance with its already-installed Node dependencies; no duplicate template npm install is needed. The script creates a new fixture via the project venv Python and uses the installed generated backend to run it in one owner/process namespace. It saves complete-record evidence and checks SIGTERM/SIGINT stop → regeneration → restart. Existing fixture data is never reset. This explicit regression is separate from ordinary generated-instance `npm test`.
+FEISHU_BITABLE_URL支持官方base/wiki目标（wiki必须解析到bitable），或已知APP_TOKEN。plan只读、列出复用/新增/冲突，apply只加表/字段、不删记录、不改权限；缺选项/类型冲突停止，不全量替换已有SingleSelect属性。重复apply复用已完成操作。建表资源授权、应用scope和协作者权限分别验证，check只证明结构读取和运行配置，不能代表真实写出/回读/短信验收。
+
+首次生产start在本活动数据库建表/加列，保留已有业务。check不做迁移，未初始化会明确报告。一个库只能属于一个活动slug，不能偷偷复用另一活动账号。
+
+## 私有API
+
+写请求要求相同PUBLIC_ORIGIN和JSON，认证cookie HttpOnly、SameSite=Strict，真实模式Secure。
+
+- GET /api/public/config：仅公开活动内容，无来源笔记、准备度、hero诊断或runtime模式
+- POST /api/auth/sms/request：{phone,purpose:'register'|'reset'}；成功只表示提供方请求已受理，无公开验证码
+- POST /api/auth/register：{phone,password,code}
+- POST /api/auth/login：{phone,password}
+- POST /api/auth/reset：{phone,password,code}，成功后撤销所有旧session
+- POST /api/auth/logout
+- GET/PATCH /api/me/profile，共用资料首次申请后锁定，手机号不可自改
+- GET/POST /api/me/attendance，需资料完整/真实容量及开放窗口
+- GET/PUT /api/me/submission，保存单份草稿；POST /api/me/submission/submit正式提交
+- POST /api/me/submission/supplement，只{note,attachmentIds}，需needs_materials和补料窗口，审核轮次+1
+- POST /api/me/files：{name,contentBase64}，仅真实PDF/DOCX/PPTX，按配置大小/附件数及账户配额；GET /api/me/files/:id必须本人
+- GET /api/me/questions：{questions:[{id,question,reply,createdAt,repliedAt}]}，只本人记录
+- POST /api/me/questions：{question,requestId}，问题trim后1–5000字符，requestId为UUID或10–80字母数字_-；首次201，同键同内容重试200，同键不同内容409；可靠DB提交后返回{question:记录}
+- GET /api/me/questions/:id：仅本人，否则404；不提供用户自改/删除/追问API
+
+未回复reply=''、repliedAt=null；工作人员回复更改后同步覆盖该条单个回复。没有即时聊天、公开FAQ转换或消息通知。每次读取均用session user_id过滤，不能用请求body指定归属。内部备注仅存在DB和飞书，公共与个人API都不返回。
+
+提交状态：draft草稿、under_review审核中、needs_materials需补材料、accepted录用/报名批准、rejected未录用/报名未批准。报名只批准/拒绝；投稿一人一份，录用自动参会，与独立批准报名按人去重，容量只软提醒工作人员，不收费。
+
+## 飞书审核与同步
+
+固定表schema见feishu-schema.js，init自动发现/创建报名、投稿、问答。工作人员编辑审核状态、反馈（对本人可见）、内部备注（不可见）或问答回复。程序不从飞书编辑活动内容、不猜用户归属。不要改用户ID/问题ID/审核轮次等机器归属列。
+
+约60秒同步，先拉取核对映射与审核轮次再应用，旧轮次不覆盖补料；工作人员状态纠错可在同一轮反映。随后单批次共享三表索引、逐条写出隔离失败。除真正补料新轮外写出不覆盖工作人员列，问答写出从不覆盖回复。稳定业务键与官方client_token在成功响应丢失/本地确认失败后避免重复记录。
+
+DB是接收事实：已提交业务行和附件保留直到正常更新，飞书暂时失败继续重试，不把失败写成发送完成，不停止展示页。sync_health及内部日志记录最近尝试/成功、连续失败和简短错误，不提供公开运维面板。
+
+```sh
+node --env-file=.env.production --env-file=.env.feishu.ids backend/sync.js
+node --env-file=.env.production --env-file=.env.feishu.ids backend/check.js
+```
+
+同步失败保留数据；修复网络/scope/协作者权限/表结构后重跑。生产备份整库（包括files BYTEA、问题回复、映射和历史），同时保存内容表/公共素材/IDs；在新的隔离数据库恢复演练后再经负责人批准切换。用官方pg_dump/pg_restore或托管PG PITR，不复制运行目录、不删除PG锁文件、不用重初始化替代恢复。更详细执行清单在模板docs/deployment-handoff.md。
+
+## 开发和测试
+
+明确开发命令、测试验证码与持久化生命周期回归见 development/README.md。生产与公开端不提供这些工具入口。
+
+## 验证边界
+
+npm test真实隔离PostgreSQL，飞书transport/SMS有明确mock。覆盖归属、DB接收失败、同步恢复、稳定键幂等、旧轮次、内部备注、初始化冲突/权限、缺配置生产拒绝等。它不证明真实租户连通。无真实凭据时必须记录真实短信/飞书端到端、部署/TLS和真实浏览器未验。

@@ -1,1 +1,53 @@
-{"event": {"slug": "unconfigured", "title": "未生成活动", "shortTitle": "未生成活动", "subtitle": "请先由唯一XLSX生成实例", "startAt": null, "endAt": null, "timezone": "Asia/Shanghai", "location": "地点未提供", "capacity": null, "language": "zh-CN", "siteUrl": "", "recordingsEnabled": false, "startDate": "", "endDate": ""}, "attendance": {"openAt": null, "closeAt": null}, "submission": {"openAt": null, "closeAt": null, "supplementCloseAt": null}, "files": {"maxFileBytes": 20971520, "maxAttachments": 3, "allowedExtensions": ["pdf", "docx", "pptx"]}, "sync": {"pollSeconds": 60}, "branding": {}, "home": {"intro": [], "target": "", "features": [], "organizers": []}, "agenda": [], "travel": {"address": "", "directions": []}, "hotels": [], "contacts": [], "faqs": [], "resources": [], "recordings": []}
+{
+  "event": {
+    "slug": "unconfigured",
+    "title": "",
+    "shortTitle": "",
+    "subtitle": "",
+    "startAt": null,
+    "endAt": null,
+    "timezone": "Asia/Shanghai",
+    "location": "",
+    "capacity": null,
+    "language": "zh-CN",
+    "siteUrl": "",
+    "recordingsEnabled": false,
+    "startDate": "",
+    "endDate": ""
+  },
+  "attendance": {
+    "openAt": null,
+    "closeAt": null
+  },
+  "submission": {
+    "openAt": null,
+    "closeAt": null,
+    "supplementCloseAt": null
+  },
+  "files": {
+    "maxFileBytes": 20971520,
+    "maxAttachments": 3,
+    "allowedExtensions": [
+      "pdf",
+      "docx",
+      "pptx"
+    ]
+  },
+  "branding": {},
+  "home": {
+    "intro": [],
+    "target": "",
+    "features": [],
+    "organizers": []
+  },
+  "agenda": [],
+  "travel": {
+    "address": "",
+    "directions": []
+  },
+  "hotels": [],
+  "contacts": [],
+  "faqs": [],
+  "resources": [],
+  "recordings": []
+}

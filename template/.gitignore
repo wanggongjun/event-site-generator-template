@@ -1,8 +1,11 @@
 node_modules/
 .npm-cache/
 dist/
+.page-test-build/
 .preview-build/
+test-evidence/
 backend/data/
-.env
+.env*
+!.env.example
 
 .frontend-test-build/

@@ -1,44 +1,32 @@
-# 运行这个生成后的活动实例
+# 运行独立活动实例 v3
 
-这是一个独立生成的活动项目；无需原仓库即可启动。活动内容源仍是生成它的唯一XLSX与公共素材，生成JSON是派生数据。
-
-需要Node24。进入本实例目录：
+内容源是生成它的唯一XLSX与公共素材；生成JSON不另编辑，飞书只处理业务审核与私有问答。需要Node24，在本目录执行一次：
 
 ```sh
-npm install
+npm ci
 npm run build
 npm test
-npm run demo
-```
-
-如果原资料没有容量或报名、投稿窗口，实例醒目标记“资料预览”，对应最终提交暂不开放；登录、共用资料与投稿草稿仍可准备。不要用数字1或任意日期凑齐。确认真实运营事实后，回到唯一XLSX补齐并重新生成、构建和正常重启；不重置数据库。
-
-打开终端显示的精确地址，默认http://localhost:3000。默认使用实际本地PostgreSQL16，短信与飞书为醒目标记的模拟服务；不是生产部署。模拟审核台位于/simulation。账号沿用短信注册+设置密码、手机号密码登录、短信重置流程。
-
-需要静态六页检查时运行：
-
-```sh
-npm run preview:offline
 npm run test:frontend
 ```
 
-打开offline-preview/home.html。静态文件不执行登录和表单；它不是浏览器交互测试。test:frontend仅用模拟内存DOM验证同路由登录/退出状态，不是真实浏览器验收。
+访问生产启动时显示的活动网站地址，六页直接呈现活动内容。内部测试工具与输出不作为本项目的用户入口。
 
-停止时在启动该实例的同一终端按Ctrl+C，等待Node和PostgreSQL退出、日志出现完成停机，再重新启动。一个PG_DATA_DIR只能有一个运行所有者；进程或端口在另一隔离会话不可见，不代表原所有者已经停止。遇到postmaster.pid拒绝启动时不能自动删PID文件或重建数据库，应回到原终端确认停机。不同实例使用独立数据目录/数据库；同机还需不同HTTP与PG端口。
+## 真实接入
 
-Linux/macOS指定另一组端口：
+按 `backend/.env.example` 将数据库、短信和飞书已有应用身份放部署Secret或被忽略的 `.env.production`。先取得对明确目标多维表的读权限，再运行只读plan。申请该资源的必要应用权限和协作者权限，由负责人处理，不自动创建凭据或扩权。
 
 ```sh
-PORT=3001 PG_PORT=55433 PUBLIC_ORIGIN=http://localhost:3001 npm run demo
+node --env-file=.env.production backend/feishu-init.js --plan
+# 负责人确认plan具体资源与新增项后：
+node --env-file=.env.production backend/feishu-init.js --apply --authorize-base=<plan的appToken>
+node --env-file=.env.production --env-file=.env.feishu.ids backend/check.js
+node --env-file=.env.production --env-file=.env.feishu.ids backend/start.js
 ```
 
-Windows PowerShell：
+已有兼容三表会复用，重复apply不重建、不删原数据。冲突看内部报告；check默认不发送短信或写飞书，不能以通过check代替端到端验收。首次启动在指定本活动数据库加表/加列，已存在记录保留。默认真实模式缺配置会失败，不能称作完整系统。
 
-```powershell
-$env:PORT='3001'; $env:PG_PORT='55433'; $env:PUBLIC_ORIGIN='http://localhost:3001'
-npm run demo
-```
+真实容量和相关报名/投稿/补料窗口仍缺时，回到唯一XLSX向负责人确认并补齐，不能猜；访客正常按钮可见，提交失败才显示简短错误。审核只在飞书，约60秒同步。用户我的问题仅自己可读，飞书一条问题一份可更新回复。
 
-PG_DATA_DIR可覆盖本地数据库目录；日志打印它的实际绝对路径。backend/data中的业务记录不能放进交付ZIP。实际运行必须保留数据库；不删除、不复制运行中的PG目录给另一个实例。
+停止原启动终端Ctrl+C，等待Node/PG完整退出。每活动独立slug/数据库，不能删除postmaster.pid绕过所有者保护。更新只改原XLSX/公共素材、重新生成和build并正常重启，保留数据库、附件、env。
 
-若要修改活动内容，返回来源模板包和原XLSX执行validate/generate，再在此处build。不要直接修改config.json、网页或飞书反向同步活动事实。真实短信/飞书接入、TLS与生产数据库详见backend/README.md；模拟已测试不代表真实集成通过。
+详细API、告警与备份恢复见backend/README.md。外部发布、采购、推仓库及权限修改需单独授权。

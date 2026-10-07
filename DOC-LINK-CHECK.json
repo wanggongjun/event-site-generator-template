@@ -1,5 +1,7 @@
 {
-  "localMarkdownLinksVerified": 11,
-  "noCaseSpecificPaths": true,
-  "noPreviousAnswersOrReports": true
+  "localMarkdownLinksVerified": 14,
+  "currentVersion": "3.0.0",
+  "baselineMain": "bc2a3c7f152e2e0fb27446a40c0d71223fed437b",
+  "historyPreserved": true,
+  "currentAttachmentsVersion": "3.0.0"
 }

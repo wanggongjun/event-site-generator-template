@@ -15,7 +15,7 @@ python3 -m venv .venv
 
 Windows 用 py -3 -m venv .venv，之后把 .venv/bin/python 换成 .\.venv\Scripts\python.exe。不需激活脚本或改执行策略。
 
-虚构的完整运营配置示例仍在 input/fictional-conference.xlsx；原文档输入由消费者按契约自行建立；缺失运营事实时生成会务预览。活动过去或窗口关闭与“事实是否齐全”是两回事，运行时仍检查当前时间。
+虚构的完整运营配置示例仍在 input/fictional-conference.xlsx；原文档输入由消费者按契约自行建立；缺失运营事实仍可生成代码/内容，内部manifest报告缺项。活动过去或窗口关闭与“事实是否齐全”是两回事，运行时仍检查当前时间。
 
 ```sh
 .venv/bin/python scripts/create_sample.py input/my-event
@@ -73,7 +73,7 @@ startDate <= endDate。填了 startAt/endAt 时，在 event.timezone 中的日�
 
 每个已知完整窗口必须 openAt < closeAt。补附件截止需要已知首次投稿截止，且 closeAt <= supplementCloseAt。报名、投稿和补材料可以覆盖活动期间或结束后，不强制截止早于会议开始。
 
-## 诚实预览与运营准备度
+## 内部运营准备度
 
 config.readiness 由实际缺失的 event.capacity、attendance.openAt、attendance.closeAt、submission.openAt、submission.closeAt 派生：
 
@@ -86,9 +86,9 @@ config.readiness 由实际缺失的 event.capacity、attendance.openAt、attenda
 }
 ```
 
-报名可用需真实容量和完整报名窗口；投稿可用需真实容量和完整投稿窗口。二者独立判定。mode=ready 表示这五项配置齐全，不表示当前窗口仍开放或活动未结束。mode=preview 明确显示会务预览、待确认事项。登录和资料功能仍能演示，后端在报名、投稿和补附件写入边界拒绝条件不齐的操作。
+报名可用需真实容量和完整报名窗口；投稿可用需真实容量和完整投稿窗口。二者独立判定。mode=ready 表示这五项配置齐全，不表示当前窗口仍开放或活动未结束。mode=preview 只在私有配置/manifest中记录待确认事项。登录、资料和草稿功能仍可用，后端在最终报名、投稿和补附件边界拒绝条件不齐的操作；公开按钮正常显示，点击失败才显示简短错误。
 
-未知的容量、截止时间和政策不出现在海报或社媒文案中。预览物料明确标为草稿或会务预览。具体某天日程的未知时刻、地点使用语义标签，不能伪装成00:00—23:59。
+未知的容量、截止时间和政策不出现在海报或社媒文案中。公开物料不包含构建/预览诊断或缺项清单。具体某天日程的未知时刻、地点使用语义标签，不能伪装成00:00—23:59。
 
 ## 集合工作表
 
@@ -137,7 +137,7 @@ agenda.date 是日期，须在活动日期范围内；time 是 HH:MM、HH:MM-HH:
 
 ## 生成文件与再生成安全
 
-config.json 同字节镜像到 frontend/public/config.json、frontend/src/config.generated.json。包含 event 日期精度、nullable 时刻/容量、独立窗口、readiness、固定业务设置、完整集合和 source.schemaVersion/workbookSha256。
+私有config.json包含完整规范内容、readiness、source/sourceNotes及横幅核验；公开frontend/public/config.json和frontend/src/config.generated.json使用同一公开投影，剔除source、sourceNotes、readiness、sync以及branding.heroWarning/heroBinding/heroSourceImage。manifest分别记录configSha256和publicConfigSha256，公开内容不泄漏内部来源与诊断。
 
 生成物料：
 - materials/poster.svg 和 poster.png：海报复用实际选用的横幅，未知运营事实省略。SVG 横幅转 PNG 优先使用已安装的 CairoSVG，否则调用 Inkscape；均不可用时保留可编辑 SVG 并在 manifest 明确提示 PNG 未生成。现成 JPG/PNG/WebP 横幅只需 Pillow 与中文字体

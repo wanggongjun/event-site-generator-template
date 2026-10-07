@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
-    "preview:offline": "vite build --ssr src/preview.tsx --outDir ../.preview-build",
-    "test:state": "vite build --ssr test/session-state.tsx --outDir ../.frontend-test-build && node ../.frontend-test-build/session-state.js"
+    "test:state": "vite build --ssr test/session-state.tsx --outDir ../.frontend-test-build && node ../.frontend-test-build/session-state.js",
+    "test:pages": "vite build --ssr test/render-pages.tsx --outDir ../.page-test-build"
   },
   "dependencies": {
     "liquid-glass-react": "1.1.1",

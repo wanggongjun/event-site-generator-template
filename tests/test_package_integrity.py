@@ -31,4 +31,28 @@ class PackageIntegrityTests(unittest.TestCase):
     if kind=='image':Image.new('RGB',(8,2),'red').save(file)
     else:file.write_bytes(original+b'\n%updated resource fixture')
     dest=self.base/('delivery-'+kind);result=self.package(dest);self.assertEqual(result.returncode,2,result.stdout);self.assertIn('先重新生成',result.stderr);self.assertFalse(dest.exists());file.write_bytes(original)
+ def test_documented_parent_relative_delivery_path_is_normalized(self):
+  source=self.base/'source';(source/'scripts').mkdir(parents=True)
+  shutil.copy2(ROOT/'scripts/package_delivery.py',source/'scripts/package_delivery.py')
+  for filename in ['README.md','SKILL.md','requirements.txt']:(source/filename).write_text('portable source fixture')
+  result=subprocess.run([sys.executable,'scripts/package_delivery.py','--destination','../delivery','--zip','../delivery.zip'],cwd=source,capture_output=True,text=True)
+  self.assertEqual(result.returncode,0,result.stderr)
+  self.assertEqual((self.base/'delivery/README.md').read_text(),'portable source fixture')
+  self.assertTrue((self.base/'delivery.zip').is_file())
+ def test_instance_package_never_includes_qa_html_outputs(self):
+  for folder in ['offline-preview','test-evidence/public-pages']:
+   path=self.app/folder;path.mkdir(parents=True);(path/'home.html').write_text('INTERNAL QA OUTPUT')
+  dest=self.base/'qa-clean-delivery';result=self.package(dest)
+  self.assertEqual(result.returncode,0,result.stderr)
+  self.assertFalse((dest/'offline-preview').exists())
+  self.assertFalse((dest/'test-evidence').exists())
+ def test_generated_instance_gitignore_excludes_all_runtime_env_variants(self):
+  shutil.copy2(ROOT/'template/.gitignore',self.template/'.gitignore')
+  generate(self.book,self.app,self.template)
+  subprocess.run(['git','init','-q',str(self.app)],check=True,capture_output=True)
+  checked=subprocess.run(['git','-C',str(self.app),'check-ignore','--no-index','.env.production','backend/.env.feishu.ids'],capture_output=True,text=True)
+  self.assertEqual(checked.returncode,0,checked.stderr)
+  self.assertEqual(set(checked.stdout.splitlines()),{'.env.production','backend/.env.feishu.ids'})
+  example=subprocess.run(['git','-C',str(self.app),'check-ignore','--no-index','backend/.env.example'],capture_output=True,text=True)
+  self.assertEqual(example.returncode,1)
 if __name__=='__main__':unittest.main()

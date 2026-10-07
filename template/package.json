@@ -1,6 +1,6 @@
 {
   "name": "generated-event-instance",
-  "version": "1.0.0",
+  "version": "3.0.0",
   "private": true,
   "type": "module",
   "workspaces": [
@@ -13,9 +13,13 @@
   "scripts": {
     "build": "npm run build --workspace frontend",
     "start": "node backend/start.js",
-    "demo": "node backend/start.js",
     "test": "npm run test --workspace backend",
-    "preview:offline": "npm run preview:offline --workspace frontend && node tools/render-preview.mjs .",
-    "test:frontend": "npm run test:state --workspace frontend"
+    "test:frontend": "npm run test:state --workspace frontend",
+    "dev:simulation": "node backend/start.js --simulation",
+    "dev:tools": "node backend/development/dev-simulation.js",
+    "feishu:plan": "node backend/feishu-init.js --plan",
+    "feishu:apply": "node backend/feishu-init.js --apply",
+    "check:integration": "node backend/check.js",
+    "test:pages": "npm run test:pages --workspace frontend && node frontend/test/export-pages.mjs ."
   }
 }

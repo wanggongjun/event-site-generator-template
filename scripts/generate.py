@@ -24,11 +24,11 @@ from zipfile import ZipFile, ZIP_DEFLATED
 import openpyxl
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = '2.0.0'
+VERSION = '3.0.0'
 MAX_WORKBOOK_BYTES = 10 * 1024 * 1024
 MAX_ASSET_BYTES = 20 * 1024 * 1024
 SAFE_ASSET_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.webp', '.pdf', '.docx', '.pptx'}
-FORBIDDEN_SEGMENTS = {'.git', 'node_modules', 'vendor', 'data', 'uploads', '__pycache__', '.aws', '.codex', '.agents'}
+FORBIDDEN_SEGMENTS = {'.git', 'node_modules', 'vendor', 'data', 'uploads', '__pycache__', 'test-evidence', 'offline-preview', '.aws', '.codex', '.agents'}
 SECRET_KEY = re.compile(r'(password|passwd|secret|token|credential|api.?key|private.?key|authorization|database.?url|smtp|webhook|feishu|oauth)', re.I)
 EVENT_FIELDS = {
  'event.slug': ('str', True), 'event.title': ('str', True), 'event.shortTitle': ('str', True),
@@ -524,6 +524,12 @@ def existing_output(output,slug):
         fail('已有输出不属于本生成器，或 event.slug 已改变；不同会议必须使用独立输出目录')
     return manifest
 
+def public_config(config):
+    """The public product contains event content, never generation/connection diagnostics."""
+    result = {key: value for key, value in config.items() if key not in {'source', 'sourceNotes', 'readiness', 'sync'}}
+    result['branding'] = {key: value for key, value in config.get('branding', {}).items() if key not in {'heroWarning', 'heroBinding', 'heroSourceImage'}}
+    return result
+
 def generate(workbook_path, output=None, template=None):
     config, assets=load_config(workbook_path)
     slug=config['event']['slug']; target=Path(output) if output else ROOT/'generated'/slug
@@ -547,8 +553,10 @@ def generate(workbook_path, output=None, template=None):
         for rel,data in files:
             p=stage/rel;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(data)
         config_bytes=(json.dumps(config,ensure_ascii=False,indent=2,sort_keys=True)+'\n').encode('utf-8')
-        for rel in ('config.json','frontend/public/config.json','frontend/src/config.generated.json'):
-            p=stage/rel;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(config_bytes)
+        (stage/'config.json').write_bytes(config_bytes)
+        public_bytes=(json.dumps(public_config(config),ensure_ascii=False,indent=2,sort_keys=True)+'\n').encode('utf-8')
+        for rel in ('frontend/public/config.json','frontend/src/config.generated.json'):
+            p=stage/rel;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(public_bytes)
         assets['assets/hero.svg']=hero_svg(config,assets).encode('utf-8')
         for rel,data in assets.items():
             p=stage/'frontend/public'/rel;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(data)
@@ -567,7 +575,7 @@ def generate(workbook_path, output=None, template=None):
                 fail(f'拒绝覆盖非生成文件: {rel}')
         manifest={'generator':'canonical-xlsx-event-template','generatorVersion':VERSION,'eventSlug':slug,
                   'workbookSha256':config['source']['workbookSha256'],
-                  'configSha256':digest(config_bytes),'templateSha256':digest(b''.join(str(r).encode()+b'\0'+d for r,d in files)),
+                  'configSha256':digest(config_bytes),'publicConfigSha256':digest(public_bytes),'templateSha256':digest(b''.join(str(r).encode()+b'\0'+d for r,d in files)),
                   'artifacts':artifact_paths,'sha256':{rel:digest((stage/rel).read_bytes()) for rel in artifact_paths},
                   'readiness':config['readiness'],
                   'warnings':([config['branding']['heroWarning']] if config['branding'].get('heroWarning') else []) + ([('会务预览：缺少 ' + '、'.join(item['key'] for item in config['readiness']['unresolved']))] if config['readiness']['mode']=='preview' else []) + ([] if png else ['PNG 未生成：系统缺少中文字体或 SVG 栅格化工具；可编辑 SVG 已生成。'])}

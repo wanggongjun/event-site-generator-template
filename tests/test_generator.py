@@ -11,7 +11,7 @@ import xml.etree.ElementTree as ET
 from zipfile import ZipFile, ZIP_DEFLATED
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'scripts'))
-from generate import ConfigError, generate, load_config, event_facts, resource_destination
+from generate import ConfigError, generate, load_config, event_facts, resource_destination, public_config
 NS={'s':'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
 
 
@@ -81,7 +81,9 @@ class GeneratorTests(unittest.TestCase):
         self.assertEqual(config['recordings'],[])
         self.assertTrue((self.output/'frontend/public/assets/hero.svg').exists())
         for mirror in ('frontend/public/config.json','frontend/src/config.generated.json'):
-            self.assertEqual((self.output/mirror).read_bytes(),(self.output/'config.json').read_bytes())
+            self.assertEqual(json.loads((self.output/mirror).read_text()),public_config(config))
+            self.assertNotIn('readiness', json.loads((self.output/mirror).read_text()))
+            self.assertNotIn('sourceNotes', json.loads((self.output/mirror).read_text()))
         for name in ('poster.svg','conference-guide.docx','conference-guide.html','social-posts.txt'):
             self.assertTrue((self.output/'materials'/name).exists())
         self.assertFalse((self.output/'backend/data').exists())
@@ -188,7 +190,7 @@ class GeneratorTests(unittest.TestCase):
         resource=next(item for item in config['resources'] if item.get('asset'))
         self.assertEqual(resource_destination(config,resource),'https://conference.example.org'+resource['asset'])
         config['event']['siteUrl']=''
-        self.assertIn('本地演示路径',resource_destination(config,resource))
+        self.assertEqual(resource_destination(config,resource),resource['asset'])
         self.assertIn('需补材料',next(item['answer'] for item in config['faqs'] if item['question']=='如何补充投稿附件？'))
         default,_=load_config(self.change('event',{'B19':''}))
         self.assertEqual(default['branding']['primaryColor'],'#5b9bd5')
@@ -243,7 +245,9 @@ class V2HonestFactsTests(unittest.TestCase):
         for text in texts:
             for forbidden in ('1970','00:00-23:59','00:00—23:59','参会规模：1 人','参会规模：None','截止：None','适合参加：'):
                 self.assertNotIn(forbidden,text)
-            self.assertIn('预览',text)
+            self.assertNotIn('会务预览',text)
+            self.assertNotIn('报名与投稿待确认',text)
+            self.assertNotIn('资料来源',text)
             self.assertIn('2027年03月18日至2027年03月19日',text)
         self.assertIn('全天',doc);self.assertIn('地点待通知',doc)
 

@@ -40,9 +40,8 @@ export function AccountAccessPanel({ initialMode = 'login', onAuthenticated }: {
     if (!validPhone(phone)) { setError('请输入有效的中国大陆手机号'); return }
     setPending(true); setError(''); setMessage('')
     try {
-      const delivered = await sendVerificationCode(phone, purpose)
-      const localPhone = phone.replace(/^\+86/u, '')
-      setMessage(delivered.simulationCode ? `本地短信模拟验证码：${delivered.simulationCode}（不会发送真实短信）` : `验证码已发送至 +86 ${localPhone.slice(0, 3)}****${localPhone.slice(-4)}`)
+      await sendVerificationCode(phone, purpose)
+      setMessage('验证码请求已受理。')
       countdown.start(); setStep(2)
     }
     catch (caught) { handleError(caught, '验证码发送失败，请稍后重试') }

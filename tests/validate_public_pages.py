@@ -21,7 +21,7 @@ class PreviewParser(HTMLParser):
   if tag=='table':self.table=None
  def handle_data(self,data):self.texts.append(data)
 def validate(app):
- app=Path(app);config=json.loads((app/'config.json').read_text());preview=app/'offline-preview';results=[]
+ app=Path(app);config=json.loads((app/'config.json').read_text());preview=app/'test-evidence/public-pages';results=[]
  for name in ['home','travel','contact','resources','faq','account']:
   p=preview/(name+'.html');parser=PreviewParser();html=p.read_text();parser.feed(html)
   for value in parser.links:
@@ -35,9 +35,11 @@ def validate(app):
    if 'mobile-service-dock' not in parser.classes:raise ValueError('Original floating mobile control missing')
    chapters=re.findall(r'([一二三四五六七八九十])、', ''.join(parser.texts))
    if chapters!=list('一二三四五六七八九十')[:len(chapters)]:raise ValueError(f'Non-consecutive section numbering: {chapters}')
-   if config.get('readiness',{}).get('mode')=='preview' and '资料预览' not in ''.join(parser.texts):raise ValueError('Unknown operational facts require visible preview label')
+  public_text=''.join(parser.texts)
+  for forbidden in ('资料预览','会务预览','本地演示','审核模拟台','heroWarning','simulationCode'):
+   if forbidden in public_text:raise ValueError(f'{name}: internal diagnostic leaked: {forbidden}')
   results.append(name)
- print(json.dumps({'passed':results,'scope':'SSR DOM structure, links, semantic preview only; NOT browser visual/interaction acceptance'},ensure_ascii=False))
+ print(json.dumps({'passed':results,'scope':'SSR DOM structure, links, public content only; NOT browser visual/interaction acceptance'},ensure_ascii=False))
 def main():
  p=argparse.ArgumentParser(description=__doc__);p.add_argument('instance',type=Path);a=p.parse_args();validate(a.instance)
 if __name__=='__main__':main()

@@ -28,34 +28,50 @@ const password = value => {
   if (typeof value !== 'string' || Buffer.byteLength(value, 'utf8') < 8 || Buffer.byteLength(value, 'utf8') > 72) fail(400, 'INVALID_PASSWORD', '密码须为8至72个UTF-8字节');
   return value;
 };
-const escapeHtml = value => String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const EMPTY_SUBMISSION = { title: '', abstract: '', keywords: [], authors: [], presenter: '', note: '', attachmentIds: [] };
+
+export function publicConfig(config) {
+  const { source, sourceNotes, readiness, sync, ...publicFields } = config;
+  const { heroWarning, heroBinding, heroSourceImage, ...branding } = publicFields.branding || {};
+  return { ...publicFields, branding };
+}
 
 export async function createServer(options = {}) {
   const env = { ...process.env, ...options.env };
   const appRoot = resolve(options.appRoot || env.APP_ROOT || resolve(import.meta.dirname, '..'));
   const configPath = options.configPath || env.EVENT_CONFIG_PATH || resolve(appRoot, 'config.json');
   const staticRoot = resolve(options.staticRoot || env.STATIC_DIR || resolve(appRoot, 'dist'));
-  const mode = options.mode || env.APP_MODE || 'simulation';
+  const mode = options.mode || env.APP_MODE || 'real';
+  if (env.NODE_ENV === 'production' && mode !== 'real') throw new Error('Production refuses development simulation.');
   if (!['simulation', 'real'].includes(mode)) throw new Error('APP_MODE must be simulation or real.');
   const origin = options.publicOrigin || env.PUBLIC_ORIGIN || 'http://localhost:3000';
   if (mode === 'real' && !origin.startsWith('https://')) throw new Error('Real mode requires an HTTPS PUBLIC_ORIGIN.');
   const initialConfig = JSON.parse(await readFile(configPath, 'utf8'));
   if (!initialConfig.event?.title) throw new Error('config.json requires event.title.');
   const eventSlug = initialConfig.event?.slug;
+  // Validate production providers before opening the database; there is no implicit mock fallback.
+  const realSms = mode === 'real' && !options.smsAdapter ? createRealSms(env) : null;
+  const feishuMode = env.FEISHU_MODE || (mode === 'simulation' ? 'simulation' : 'real');
+  if (mode === 'real' && feishuMode !== 'real') throw new Error('Real mode requires real Feishu configuration.');
+  if (!['simulation', 'real'].includes(feishuMode)) throw new Error('FEISHU_MODE must be simulation or real.');
+  const realFeishu = feishuMode === 'real' && !options.feishuAdapter ? new FeishuBitable(env, null) : null;
   const db = options.pool || await connectDatabase(options.databaseUrl || env.DATABASE_URL, eventSlug);
   if (options.pool) await assertEventDatabase(db, eventSlug);
   const ownPool = !options.pool;
-  const sms = options.smsAdapter || (mode === 'simulation' ? new SimulationSms() : createRealSms(env));
-  const feishuMode = env.FEISHU_MODE || (mode === 'simulation' ? 'simulation' : 'real');
-  if (mode === 'real' && feishuMode !== 'real') throw new Error('Real mode requires real Feishu configuration.');
-  const feishu = options.feishuAdapter || (feishuMode === 'simulation' ? new SimulationFeishu(db) : new FeishuBitable(env, db));
+  if (realFeishu) realFeishu.db = db;
+  const sms = options.smsAdapter || realSms || new SimulationSms(db);
+  const feishu = options.feishuAdapter || realFeishu || new SimulationFeishu(db);
   const now = options.now || (() => Date.now());
   const rates = new Map();
   let syncing = false;
   let syncError = null;
   let lastSyncAt = null;
   let timer;
+  const reportError = error => {
+    // Logs are private operational output. Do not log payloads, phones, secrets, or raw provider responses.
+    console.error('Event backend error:', error.code || error.name, error.message);
+    options.onError?.(error);
+  };
   async function config() {
     const parsed = JSON.parse(await readFile(configPath, 'utf8'));
     if (!parsed.event?.title) throw new Error('config.json requires event.title.');
@@ -139,12 +155,13 @@ export async function createServer(options = {}) {
       const readiness = businessReadiness(cfg);
       if (!readiness[`${kind}Enabled`]) {
         const unresolved = readiness.unresolved.filter(item => item.key === 'event.capacity' || item.key.startsWith(`${kind}.`));
-        fail(409, 'EVENT_FACTS_UNRESOLVED', `会务信息未确认，相应提交暂未开放。暂不能正式${kind === 'attendance' ? '报名' : supplement ? '补交材料' : '投稿'}。${unresolved.map(item => `${item.key}：${item.reason}`).join(' ')}`, { unresolved });
+        options.onDiagnostic?.({ code: 'EVENT_FACTS_UNRESOLVED', unresolved });
+        fail(409, 'APPLICATION_UNAVAILABLE', '此项申请暂未开放，请稍后再试');
       }
     }
     const open = windowTime(settings.openAt);
     const close = windowTime(supplement ? settings.supplementCloseAt || settings.closeAt : settings.closeAt);
-    if (supplement && !Number.isFinite(close)) fail(409, 'EVENT_FACTS_UNRESOLVED', '补充材料截止时间待主办方确认，请补全 submission.supplementCloseAt 后重新生成配置。', { unresolved: [{ key: 'submission.supplementCloseAt', reason: '补充材料截止时间须为含时区的日期时间。' }] });
+    if (supplement && !Number.isFinite(close)) fail(409, 'APPLICATION_UNAVAILABLE', '补充材料暂未开放，请稍后再试');
     if (Number.isFinite(open) && now() < open || Number.isFinite(close) && now() > close) fail(409, 'WINDOW_CLOSED', '此申请窗口尚未开放或已截止');
   }
   async function stats(cfg, client = db) {
@@ -164,8 +181,23 @@ export async function createServer(options = {}) {
     const attachments = data.attachmentIds?.length ? await result('SELECT id,name,size,mime FROM files WHERE user_id=$1 AND id=ANY($2::text[])', [userId, data.attachmentIds]) : [];
     return { ...data, reviewRound: row.submission_review_round || 0, status: row.submission_status, feedback: row.submission_feedback || '', attachments, updatedAt: new Date(Number(row.submission_updated_at)).toISOString(), submittedAt: row.submission_submitted_at ? new Date(Number(row.submission_submitted_at)).toISOString() : null };
   }
+  const questionView = row => ({
+    id: row.id, question: row.question, reply: row.reply,
+    createdAt: new Date(Number(row.created_at)).toISOString(),
+    repliedAt: row.replied_at ? new Date(Number(row.replied_at)).toISOString() : null,
+  });
   async function applyReview(review) {
     return transaction(db, async client => {
+      if (review.kind === 'question') {
+        const mapping = await one('SELECT * FROM question_remote_records WHERE question_id=$1 AND remote_id=$2 FOR UPDATE', [review.question_id, review.remote_id], client);
+        if (!mapping || mapping.reply_fingerprint === review.fingerprint) return false;
+        const reply = clean(review.reply ?? '', 10000, '回复');
+        const question = await one('SELECT id FROM questions WHERE id=$1 FOR UPDATE', [review.question_id], client);
+        if (!question) return false;
+        await client.query('UPDATE questions SET reply=$1,replied_at=$2 WHERE id=$3', [reply, reply ? now() : null, question.id]);
+        await client.query('UPDATE question_remote_records SET reply_fingerprint=$1 WHERE question_id=$2', [review.fingerprint, question.id]);
+        return true;
+      }
       if (review.id) {
         const queued = await one('SELECT applied_at FROM review_queue WHERE id=$1 FOR UPDATE', [review.id], client);
         if (!queued || queued.applied_at) return false;
@@ -173,12 +205,26 @@ export async function createServer(options = {}) {
       const row = await one('SELECT * FROM business WHERE user_id=$1 FOR UPDATE', [review.user_id], client);
       const kind = review.kind;
       if (!['attendance', 'submission'].includes(kind)) throw new Error('Invalid review kind.');
-      const states = kind === 'attendance' ? ['accepted', 'rejected'] : ['accepted', 'rejected', 'needs_materials'];
+      const states = kind === 'attendance' ? ['under_review', 'accepted', 'rejected'] : ['under_review', 'accepted', 'rejected', 'needs_materials'];
       if (!states.includes(review.decision)) throw new Error('Invalid review decision.');
       if (!row?.[`${kind}_status`] || row[`${kind}_status`] === 'draft') throw new Error('No submitted application to review.');
+      const reviewRound = Number(review.reviewRound ?? review.review_round);
+      if (kind === 'submission' && (!Number.isInteger(reviewRound) || reviewRound !== row.submission_review_round)) {
+        if (review.id) await client.query("UPDATE review_queue SET applied_at=$1,error='Obsolete review round' WHERE id=$2", [now(), review.id]);
+        return false;
+      }
+      if (review.remote_id) {
+        const mapping = await one('SELECT * FROM remote_records WHERE kind=$1 AND user_id=$2 AND remote_id=$3 FOR UPDATE', [kind, review.user_id, review.remote_id], client);
+        if (!mapping || mapping.review_fingerprint === review.fingerprint) return false;
+      }
       const previous = row[`${kind}_status`];
-      await client.query(`UPDATE business SET ${kind}_status=$1,${kind}_feedback=$2,${kind}_updated_at=$3 WHERE user_id=$4`, [review.decision, clean(review.feedback || '', 10000, '反馈'), now(), review.user_id]);
-      await client.query('INSERT INTO review_history(user_id,kind,previous_state,decision,feedback,created_at,source) VALUES($1,$2,$3,$4,$5,$6,$7)', [review.user_id, kind, previous, review.decision, review.feedback || '', now(), review.remote_id ? 'feishu' : 'simulation']);
+      const internalNote = clean(review.internalNote ?? review.internal_note ?? '', 10000, '内部备注');
+      const publicFeedback = clean(review.feedback || '', 10000, '反馈');
+      if (review.decision !== previous || publicFeedback !== row[`${kind}_feedback`]) {
+        await client.query(`UPDATE business SET ${kind}_status=$1,${kind}_feedback=$2,${kind}_updated_at=$3 WHERE user_id=$4`, [review.decision, publicFeedback, now(), review.user_id]);
+        await client.query('INSERT INTO review_history(user_id,kind,previous_state,decision,feedback,created_at,source,review_round) VALUES($1,$2,$3,$4,$5,$6,$7,$8)', [review.user_id, kind, previous, review.decision, review.feedback || '', now(), review.remote_id ? 'feishu' : 'simulation', kind === 'submission' ? reviewRound : 0]);
+      }
+      await client.query(`UPDATE business SET ${kind}_internal_note=$1 WHERE user_id=$2`, [internalNote, review.user_id]);
       if (review.id) await client.query('UPDATE review_queue SET applied_at=$1,error=NULL WHERE id=$2', [now(), review.id]);
       if (review.remote_id) await client.query('UPDATE remote_records SET review_fingerprint=$1 WHERE kind=$2 AND remote_id=$3', [review.fingerprint, kind, review.remote_id]);
       return true;
@@ -195,13 +241,15 @@ export async function createServer(options = {}) {
       locked = (await lockClient.query("SELECT pg_try_advisory_lock(hashtext('event-template-review-sync')) AS locked")).rows[0].locked;
       if (!locked) return { busy: true };
       await config(); // Refuse a changed event identity before reading or applying reviews.
-      const reviews = await feishu.pull(now(), force);
+      const errors = [];
+      let reviews = [];
+      try { reviews = await feishu.pull(now(), force, { continueOnError: true }); for (const error of reviews.errors || []) errors.push(new Error(error.message)); } catch (error) { errors.push(error); }
       let applied = 0;
       for (const review of reviews) {
         try { if (await applyReview(review)) applied++; }
         catch (error) {
-          if (!review.id) throw error;
-          await db.query('UPDATE review_queue SET error=$1,applied_at=$2 WHERE id=$3', [error.message, now(), review.id]);
+          errors.push(error);
+          if (review.id) await db.query('UPDATE review_queue SET error=$1 WHERE id=$2', [error.message, review.id]);
         }
       }
       const rows = await result('SELECT u.id,u.phone,u.profile,b.* FROM users u JOIN business b ON b.user_id=u.id');
@@ -212,20 +260,29 @@ export async function createServer(options = {}) {
         const files = kind === 'submission' && data.attachmentIds?.length ? await result('SELECT * FROM files WHERE user_id=$1 AND id=ANY($2::text[])', [row.id, data.attachmentIds]) : [];
         records.push({ kind, reviewRound: kind === 'submission' ? row.submission_review_round : undefined, userId: row.id, phone: row.phone, profile: row.profile, data, status: row[`${kind}_status`], feedback: row[`${kind}_feedback`], files });
       }
-      await feishu.export(records);
+      const questions = await result('SELECT q.*,u.phone,u.profile FROM questions q JOIN users u ON u.id=q.user_id ORDER BY q.created_at,q.id');
+      for (const question of questions) records.push({ kind: 'question', questionId: question.id, userId: question.user_id, phone: question.phone, profile: question.profile, question: question.question, reply: question.reply, createdAt: Number(question.created_at), repliedAt: question.replied_at ? Number(question.replied_at) : null, files: [] });
+      // One batch shares three remote indexes; the real adapter isolates each record's failure.
+      try {
+        const exported = await feishu.export(records, { continueOnError: true });
+        for (const error of exported?.errors || []) errors.push(new Error(error.message));
+      } catch (error) { errors.push(error); }
+      if (errors.length) throw new Error(`${errors.length} synchronization operation(s) failed: ${errors[0].message}`);
       syncError = null; lastSyncAt = now();
+      await db.query('UPDATE sync_health SET last_attempt_at=$1,last_success_at=$1,consecutive_failures=0,last_error=NULL WHERE id=1', [lastSyncAt]);
       await db.query('DELETE FROM sessions WHERE expires_at<$1', [now()]);
       return { applied, lastSyncAt: new Date(lastSyncAt).toISOString() };
-    } catch (error) { syncError = error.message; throw error; }
+    } catch (error) {
+      syncError = error.message;
+      await db.query('UPDATE sync_health SET last_attempt_at=$1,consecutive_failures=consecutive_failures+1,last_error=$2 WHERE id=1', [now(), syncError]).catch(() => {});
+      reportError(error);
+      throw error;
+    }
     finally {
       if (locked) await lockClient.query("SELECT pg_advisory_unlock(hashtext('event-template-review-sync'))");
       lockClient?.release();
       syncing = false;
     }
-  }
-  function requireSimulation(req) {
-    const local = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
-    if (mode !== 'simulation' || !local || req.headers.host !== new URL(origin).host) fail(404, 'NOT_FOUND', '页面不存在');
   }
   const server = http.createServer(async (req, res) => {
     res.setHeader('x-content-type-options', 'nosniff');
@@ -242,20 +299,20 @@ export async function createServer(options = {}) {
         if (req.headers.origin !== origin) fail(403, 'ORIGIN_FORBIDDEN', '请求来源不被允许');
         takeRate(`all:${req.socket.remoteAddress}`, 180, 60000);
       }
-      if (path === '/api/public/config' && method === 'GET') return send(res, 200, { config: currentConfig, readiness: businessReadiness(currentConfig), runtime: { mode, smsMode: mode, feishuMode, pollSeconds } });
+      if (path === '/api/public/config' && method === 'GET') return send(res, 200, { config: publicConfig(currentConfig) });
       if (path === '/api/auth/sms/request' && method === 'POST') {
         const body = await readBody(req), phone = normalizePhone(body.phone), purpose = body.purpose;
         if (!['register', 'reset'].includes(purpose)) fail(400, 'INVALID_PURPOSE', '验证码用途不正确');
         takeRate(`sms-ip:${req.socket.remoteAddress}`, 10, 600000); takeRate(`sms:${phone}`, 5, 3600000);
         const existing = await one('SELECT id FROM users WHERE phone=$1', [phone]);
         if (purpose === 'register' && existing) fail(409, 'PHONE_REGISTERED', '此手机号已注册，请使用密码登录或重置密码');
-        if (purpose === 'reset' && !existing) return send(res, 200, { ok: true, mode, message: '若该手机号已注册，验证码将发送至该号码' });
+        if (purpose === 'reset' && !existing) return send(res, 200, { ok: true, message: '若该手机号已注册，验证码将发送至该号码' });
         const previous = await one('SELECT sent_at FROM sms_codes WHERE phone=$1 AND purpose=$2', [phone, purpose]);
         if (previous && now() - Number(previous.sent_at) < 60000) fail(429, 'SMS_COOLDOWN', '请60秒后重试');
         const code = String(randomInt(0, 1000000)).padStart(6, '0'), salt = id();
         const response = await sms.send({ phone, purpose, code });
         await db.query('INSERT INTO sms_codes(phone,purpose,code_hash,salt,expires_at,sent_at,attempts) VALUES($1,$2,$3,$4,$5,$6,0) ON CONFLICT(phone,purpose) DO UPDATE SET code_hash=excluded.code_hash,salt=excluded.salt,expires_at=excluded.expires_at,sent_at=excluded.sent_at,attempts=0', [phone, purpose, digest(`${salt}:${code}`), salt, now() + 600000, now()]);
-        return send(res, 200, { ok: true, ...response, expiresIn: 600, retryAfter: 60, ...(mode === 'simulation' ? { message: '仅模拟：此验证码未发送短信，请使用simulationCode测试' } : {}) });
+        return send(res, 200, { ok: true, expiresIn: 600, retryAfter: 60 });
       }
       if (path === '/api/auth/register' && method === 'POST') {
         const body = await readBody(req), phone = normalizePhone(body.phone), plain = password(body.password);
@@ -307,6 +364,36 @@ export async function createServer(options = {}) {
       if (path.startsWith('/api/me/')) {
         const { user } = await session(req), cfg = currentConfig;
         const row = await one('SELECT * FROM business WHERE user_id=$1', [user.id]);
+        if (path === '/api/me/questions' && method === 'GET') {
+          const questions = await result('SELECT * FROM questions WHERE user_id=$1 ORDER BY created_at DESC,id', [user.id]);
+          return send(res, 200, { questions: questions.map(questionView) });
+        }
+        if (path === '/api/me/questions' && method === 'POST') {
+          const body = await readBody(req);
+          if (Object.keys(body).some(key => !['question', 'requestId'].includes(key))) fail(400, 'QUESTION_FIELDS', '问题内容格式不正确');
+          const question = clean(body.question, 5000, '问题');
+          if (!question) fail(400, 'QUESTION_REQUIRED', '请输入问题');
+          if (typeof body.requestId !== 'string' || !/^[A-Za-z0-9_-]{10,80}$/.test(body.requestId)) fail(400, 'REQUEST_ID_REQUIRED', '请重新提交问题');
+          const saved = await transaction(db, async client => {
+            // Serialize this owner's duplicate requests without blocking other accounts.
+            await client.query('SELECT id FROM users WHERE id=$1 FOR UPDATE', [user.id]);
+            const existing = await one('SELECT * FROM questions WHERE user_id=$1 AND request_id=$2', [user.id, body.requestId], client);
+            if (existing) {
+              if (existing.question !== question) fail(409, 'QUESTION_CONFLICT', '提交内容已改变，请重新提交');
+              return { record: existing, created: false };
+            }
+            takeRate(`question:${user.id}`, 20, 3600000);
+            const record = await one('INSERT INTO questions(id,user_id,request_id,question,created_at) VALUES($1,$2,$3,$4,$5) RETURNING *', [id(), user.id, body.requestId, question, now()], client);
+            return { record, created: true };
+          });
+          return send(res, saved.created ? 201 : 200, { question: questionView(saved.record) });
+        }
+        const questionMatch = path.match(/^\/api\/me\/questions\/([\w-]+)$/);
+        if (questionMatch && method === 'GET') {
+          const question = await one('SELECT * FROM questions WHERE id=$1 AND user_id=$2', [questionMatch[1], user.id]);
+          if (!question) fail(404, 'QUESTION_NOT_FOUND', '问题不存在');
+          return send(res, 200, { question: questionView(question) });
+        }
         if (path === '/api/me/profile' && method === 'GET') return send(res, 200, { profile: { ...user.profile, phone: user.phone }, complete: user.profile_complete, editable: !row.attendance_status && !row.submission_submitted_at });
         if (path === '/api/me/profile' && method === 'PATCH') {
           const body = await readBody(req);
@@ -365,7 +452,7 @@ export async function createServer(options = {}) {
             const data = { ...current.submission_data, note: clean(body.note ?? current.submission_data.note, 15000, '补充备注') };
             if (body.attachmentIds !== undefined) data.attachmentIds = submissionData({ attachmentIds: body.attachmentIds }).attachmentIds;
             await checkAttachments(client, user.id, data.attachmentIds, cfg, true);
-            return one("UPDATE business SET submission_status='under_review',submission_review_round=submission_review_round+1,submission_data=$1,submission_updated_at=$2 WHERE user_id=$3 RETURNING *", [data, now(), user.id], client);
+            return one("UPDATE business SET submission_status='under_review',submission_review_round=submission_review_round+1,submission_feedback='',submission_data=$1,submission_updated_at=$2 WHERE user_id=$3 RETURNING *", [data, now(), user.id], client);
           });
           return send(res, 200, { submission: await submissionView(updated, user.id, cfg) });
         }
@@ -397,40 +484,7 @@ export async function createServer(options = {}) {
           return res.end(file.content);
         }
       }
-      if (path.startsWith('/api/simulation/')) {
-        requireSimulation(req);
-        const cfg = currentConfig;
-        if (path === '/api/simulation/state' && method === 'GET') {
-          const rows = await result('SELECT u.id,u.phone,u.profile,b.* FROM users u JOIN business b ON b.user_id=u.id ORDER BY u.created_at');
-          const users = [];
-          for (const row of rows) users.push({ id: row.id, phone: row.phone, profile: row.profile, attendance: attendanceView(row), submission: await submissionView(row, row.id, cfg) });
-          return send(res, 200, { simulation: true, warning: '仅本地模拟，不是管理员平台；未向飞书发送数据', users, attendanceStats: await stats(cfg), pendingReviews: await result('SELECT id,user_id,kind,decision,feedback,due_at,applied_at,error FROM review_queue ORDER BY id DESC LIMIT 100'), lastSyncAt, syncError, pollSeconds });
-        }
-        if (path === '/api/simulation/reviews' && method === 'POST') {
-          const body = await readBody(req), phone = normalizePhone(body.phone), kind = body.kind, decision = body.decision, feedback = clean(body.feedback ?? '', 10000, '反馈');
-          if (!['attendance', 'submission'].includes(kind) || !(kind === 'attendance' ? ['accepted', 'rejected'] : ['accepted', 'rejected', 'needs_materials']).includes(decision)) fail(400, 'INVALID_REVIEW', '审核类型或结果不正确');
-          const user = await one('SELECT id FROM users WHERE phone=$1', [phone]);
-          if (!user) fail(404, 'USER_NOT_FOUND', '未找到此用户');
-          const current = await one('SELECT * FROM business WHERE user_id=$1', [user.id]);
-          if (!current?.[`${kind}_status`] || current[`${kind}_status`] === 'draft') fail(409, 'NOT_SUBMITTED', '尚无已提交的申请');
-          const review = await one('INSERT INTO review_queue(user_id,kind,decision,feedback,due_at) VALUES($1,$2,$3,$4,$5) RETURNING id,due_at', [user.id, kind, decision, feedback, now() + pollSeconds * 1000]);
-          return send(res, 202, { simulation: true, review: { id: review.id, dueAt: new Date(Number(review.due_at)).toISOString() }, message: `模拟审核已排队，约${pollSeconds}秒后同步` });
-        }
-        if (path === '/api/simulation/sync' && method === 'POST') {
-          const body = await readBody(req);
-          return send(res, 200, { simulation: true, ...await syncReviews({ force: body.force === true }) });
-        }
-      }
-      if (path === '/simulation' && method === 'GET') {
-        requireSimulation(req);
-        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
-        return res.end(await readFile(resolve(import.meta.dirname, 'simulation.html'), 'utf8'));
-      }
-      if (path === '/simulation.js' && method === 'GET') {
-        requireSimulation(req);
-        res.writeHead(200, { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'no-store' });
-        return res.end(await readFile(resolve(import.meta.dirname, 'simulation.js'), 'utf8'));
-      }
+      if (path === '/simulation' || path === '/simulation.js') fail(404, 'NOT_FOUND', '页面不存在');
       if (path.startsWith('/api/')) fail(404, 'NOT_FOUND', '接口不存在');
       if (!['GET', 'HEAD'].includes(method)) fail(405, 'METHOD_NOT_ALLOWED', '请求方法不支持');
       let target = resolve(staticRoot, `.${path}`);
@@ -445,15 +499,26 @@ export async function createServer(options = {}) {
       if (res.headersSent) { res.destroy(); return; }
       if (error.code === '23505') return send(res, 409, { error: { code: 'CONFLICT', message: '已存在此记录' } });
       const status = error.status || 500;
-      if (status === 500) options.onError?.(error);
+      if (status === 500) reportError(error);
       send(res, status, { error: { code: error.code || 'INTERNAL_ERROR', message: status === 500 ? '服务暂时不可用，请稍后重试' : error.message, ...(status < 500 ? error.details : {}) } });
     }
   });
   if (options.autoSync !== false) {
-    timer = setInterval(() => syncReviews().catch(error => options.onError?.(error)), pollSeconds * 1000);
+    timer = setInterval(() => syncReviews().catch(() => {}), pollSeconds * 1000);
     timer.unref();
   }
   server.syncReviews = syncReviews;
+  server.queueSimulationReview = async ({ phone, kind, decision, feedback = '', internalNote = '' }) => {
+    if (mode !== 'simulation') throw new Error('Development review command requires explicit APP_MODE=simulation.');
+    if (!['attendance', 'submission'].includes(kind) || !(kind === 'attendance' ? ['accepted', 'rejected'] : ['accepted', 'rejected', 'needs_materials']).includes(decision)) throw new Error('Invalid development review.');
+    return transaction(db, async client => {
+      const user = await one('SELECT id FROM users WHERE phone=$1', [normalizePhone(phone)], client);
+      if (!user) throw new Error('User not found.');
+      const current = await one('SELECT * FROM business WHERE user_id=$1 FOR UPDATE', [user.id], client);
+      if (!current?.[`${kind}_status`] || current[`${kind}_status`] === 'draft') throw new Error('No submitted application.');
+      return one('INSERT INTO review_queue(user_id,kind,decision,feedback,due_at,review_round,internal_note) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id,due_at', [user.id, kind, decision, clean(feedback, 10000), now()+pollSeconds*1000, kind === 'submission' ? current.submission_review_round : 0, clean(internalNote,10000)], client);
+    });
+  };
   server.database = db;
   server.runtime = { mode, origin, pollSeconds, configPath, appRoot };
   server.shutdown = async () => { clearInterval(timer); if (server.listening) await new Promise(resolve => server.close(resolve)); if (ownPool) await db.end(); };

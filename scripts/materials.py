@@ -23,7 +23,7 @@ def resource_destination(config, item):
         return item['url']
     asset = item.get('asset', '')
     site = config['event'].get('siteUrl', '')
-    return site.rstrip('/') + quote(asset, safe='/') if site else asset + '（本地演示路径；需先启动网站，不能作为独立公开链接）'
+    return site.rstrip('/') + quote(asset, safe='/') if site else asset
 
 
 def public_fact_lines(config):
@@ -40,20 +40,12 @@ def public_fact_lines(config):
     return lines
 
 
-def draft_note(config):
-    if config.get('readiness', {}).get('mode') != 'preview':
-        return ''
-    return '会务预览稿：报名或投稿条件尚未完整提供，待主办方确认后开放。'
-
-
 def guide_sections(config):
     f = facts(config)
     overview = [f['dates'] + ' · ' + f['location'], config['travel']['address'], *config['home']['intro']]
     if config['home'].get('target'):
         overview.append('面向人群：' + config['home']['target'])
     overview.append('时区：' + config['event']['timezone'])
-    if draft_note(config):
-        overview.append(draft_note(config))
     organizations = []
     roles = OrderedDict()
     for item in config['home'].get('organizers', []):
@@ -71,8 +63,6 @@ def guide_sections(config):
         operational.append('补充材料截止：' + datetime.fromisoformat(supplement).strftime('%Y年%m月%d日 %H:%M'))
     operational += ['报名与投稿是两项独立流程。开放后，先完成个人信息，再分别提交。',
         '在线投稿系统每人一份投稿；最多 ' + str(config['files']['maxAttachments']) + ' 个附件，单个不超过 ' + str(config['files']['maxFileBytes']//1048576) + 'MB，支持 ' + '/'.join(config['files']['allowedExtensions']).upper() + '。']
-    if draft_note(config):
-        operational.insert(0, draft_note(config))
     if f['siteUrl']:
         operational.append('会议网站：' + f['siteUrl'])
     contacts = [item['name'] + '（' + item['responsibility'] + '）：' + ' / '.join(item[k] for k in ('email', 'phone') if item.get(k)) + (('。' + item['note']) if item.get('note') else '') for item in config['contacts']]
@@ -86,7 +76,6 @@ def guide_sections(config):
         ('联系与常见问题', [*contacts, *[item['question'] + '\n' + item['answer'] for item in config['faqs']]]),
         ('报名与投稿系统说明', operational),
         ('园区地图与资料下载', [item['title'] + '：' + item['description'] + ' ' + resource_destination(config, item) for item in config['resources']]),
-        ('资料来源', [item['title'] + '：' + item['body'] for item in config.get('sourceNotes', [])]),
     ]
     if config['event'].get('recordingsEnabled'):
         sections.append(('会议回放', [item['title'] + '：' + item['description'] + ' ' + item['url'] for item in config['recordings']]))
@@ -325,7 +314,6 @@ def poster_svg(config, hero_path=None):
     escape=html.escape
     title=config['event']['title']
     lines=public_fact_lines(config)
-    if draft_note(config):lines.append('会务预览稿，报名与投稿待确认')
     text=''.join(f'<text x="88" y="{490+i*78}" font-size="{min(32,900/max(1,sum(1 if ord(c)>255 else .57 for c in line))):.1f}">{escape(line)}</text>' for i,line in enumerate(lines))
     intro_y=490+len(lines)*78+58
     intro_lines=poster_intro(config)
@@ -371,7 +359,6 @@ def poster_png(config, path, hero_path=None):
         draw.text((88,y),text,font=font,fill=color,anchor='lt')
     write('会议信息',360,40)
     lines=public_fact_lines(config)
-    if draft_note(config):lines.append('会务预览稿，报名与投稿待确认')
     for i,line in enumerate(lines):write(line,450+i*78,32)
     intro_y=450+len(lines)*78+58
     intro_lines=poster_intro(config)
@@ -406,10 +393,8 @@ def write_materials(stage, config, hero_path=None):
     long += ['时间：'+f['dates'],'地点：'+f['location'],*config['home']['intro']]
     if config['home'].get('target'):long.append('面向人群：'+config['home']['target'])
     long += public_fact_lines(config)[2:]
-    if draft_note(config):long.append(draft_note(config))
     long.append('所有时间以 '+config['event']['timezone']+' 为准。')
     short=f['title']+'将于'+f['dates']+'在'+f['location']+'举行。'
     if f['siteUrl']:short+='详情：'+f['siteUrl']
-    if draft_note(config):short+=' '+draft_note(config)
-    posts='长版宣传文案'+(' 草稿' if draft_note(config) else '')+'\n'+'\n'.join(long)+'\n\n简版宣传文案'+(' 草稿' if draft_note(config) else '')+'\n'+short+'\n'
+    posts='长版宣传文案'+''+'\n'+'\n'.join(long)+'\n\n简版宣传文案'+''+'\n'+short+'\n'
     (folder/'social-posts.txt').write_text(posts,encoding='utf-8');return png

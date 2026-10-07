@@ -11,7 +11,9 @@ __pycache__/
 /generated/
 /preview/
 dist/
+.page-test-build/
 .preview-build/
+test-evidence/
 offline-preview/
 
 # Runtime secrets and business data
@@ -21,8 +23,7 @@ offline-preview/
 uploads/
 *.log
 *.zip
-!/attachments/v2.0/*.zip
-!/attachments/v2.0/*.zip.part*
+!/attachments/v3.0/*.zip
 
 # Local agent settings and reference material
 .agents/

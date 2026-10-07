@@ -48,6 +48,9 @@ async function start(label) {
   }
   throw new Error(`Backend did not become ready; inspect ${log}`);
 }
+async function devCommand(...args) {
+  return execute(process.execPath, [join(installedInstance,'backend/development/dev-simulation.js'),...args], {env:{...process.env,APP_MODE:'simulation',APP_ROOT:instance,DATABASE_URL:`postgresql://event_demo:local_demo_only@127.0.0.1:${pgPort}/postgres`,PUBLIC_ORIGIN:origin}});
+}
 async function stop(signal) {
   const exit = new Promise(resolve => child.once('exit', (code, actualSignal) => resolve({ code, signal: actualSignal })));
   child.kill(signal);
@@ -61,18 +64,19 @@ try {
   await assert.rejects(startLocalPostgres({ dataDir, port: pgPort }), /ownership is active or unknown/);
   assert.equal(await readFile(join(dataDir, 'postmaster.pid'), 'utf8'), marker);
   const phone = '13800001234', password = 'Lifecycle-Password-1234';
-  const sms = await request('/api/auth/sms/request', 'POST', { phone, purpose: 'register' });
-  userId = (await request('/api/auth/register', 'POST', { phone, password, code: sms.simulationCode })).user.id;
+  await request('/api/auth/sms/request', 'POST', { phone, purpose: 'register' });
+  const code = JSON.parse((await devCommand('sms',phone)).stdout.trim()).code;
+  userId = (await request('/api/auth/register', 'POST', { phone, password, code })).user.id;
   await request('/api/me/profile', 'PATCH', { name: '持久化测试', email: 'lifecycle@example.org', organization: '虚构测试机构', identity: '研究人员', researchDirection: '数据库生命周期' });
   await request('/api/me/attendance', 'POST', { motivation: '持久化回归' });
   const pdf = '%PDF-2.0\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF\n';
   fileId = (await request('/api/me/files', 'POST', { name: 'lifecycle.pdf', contentBase64: Buffer.from(pdf).toString('base64') })).file.id;
   await request('/api/me/submission', 'PUT', { title: '生命周期回归', abstract: '完整账户、附件与审核状态跨重启保持。', keywords: ['持久化'], authors: [{ name: '持久化测试', affiliation: '虚构测试机构' }], presenter: '持久化测试', note: '', attachmentIds: [fileId] });
   await request('/api/me/submission/submit', 'POST', {});
-  await request('/api/simulation/reviews', 'POST', { phone, kind: 'submission', decision: 'needs_materials', feedback: '补全' }); await request('/api/simulation/sync', 'POST', { force: true });
+  await devCommand('review',phone,'submission','needs_materials','补全'); await devCommand('sync');
   await request('/api/me/submission/supplement', 'POST', { note: '已补全' });
-  for (const kind of ['submission', 'attendance']) await request('/api/simulation/reviews', 'POST', { phone, kind, decision: 'accepted', feedback: '通过' });
-  await request('/api/simulation/sync', 'POST', { force: true });
+  for (const kind of ['submission', 'attendance']) await devCommand('review',phone,kind,'accepted','通过');
+  await devCommand('sync');
   for (let round = 1; round <= 3; round++) {
     await stop(round === 2 ? 'SIGINT' : 'SIGTERM');
     const generated = await execute(python, [join(packageRoot, 'scripts/generate.py'), join(packageRoot, 'input/fictional-conference.xlsx'), '--output', instance]);

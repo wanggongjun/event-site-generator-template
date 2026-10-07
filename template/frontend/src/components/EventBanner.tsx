@@ -45,11 +45,11 @@ export function EventBanner({ title, titleHref, dates, venue, tagline, scale, im
     <div className="event-container">
       <h1 className="event-banner__title">{titleHref ? <a href={titleHref}>{title}</a> : title}</h1>
       {tagline ? <p className="event-banner__tagline">{tagline}</p> : null}
-      <div className="event-banner__meta" aria-label="活动信息">
-        <span><CalendarDays aria-hidden="true" size={14} />{dates}</span>
-        <span><MapPin aria-hidden="true" size={14} />{venue}</span>
+      {(dates||venue||scale)&&<div className="event-banner__meta" aria-label="活动信息">
+        {dates&&<span><CalendarDays aria-hidden="true" size={14} />{dates}</span>}
+        {venue&&<span><MapPin aria-hidden="true" size={14} />{venue}</span>}
         {scale ? <span>{scale}</span> : null}
-      </div>
+      </div>}
     </div>
   </header>
 }

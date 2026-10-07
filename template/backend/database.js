@@ -23,6 +23,27 @@ export async function connectDatabase(connectionString, eventSlug) {
     );
     ALTER TABLE business ADD COLUMN IF NOT EXISTS submission_review_round INTEGER NOT NULL DEFAULT 0;
     UPDATE business SET submission_review_round=1 WHERE submission_submitted_at IS NOT NULL AND submission_review_round=0;
+    ALTER TABLE business ADD COLUMN IF NOT EXISTS attendance_internal_note TEXT NOT NULL DEFAULT '';
+    ALTER TABLE business ADD COLUMN IF NOT EXISTS submission_internal_note TEXT NOT NULL DEFAULT '';
+    CREATE TABLE IF NOT EXISTS questions (
+      id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), request_id TEXT NOT NULL,
+      question TEXT NOT NULL, reply TEXT NOT NULL DEFAULT '', created_at BIGINT NOT NULL,
+      replied_at BIGINT, UNIQUE(user_id,request_id)
+    );
+    CREATE INDEX IF NOT EXISTS questions_user_id ON questions(user_id);
+    CREATE TABLE IF NOT EXISTS question_remote_records (
+      question_id TEXT PRIMARY KEY REFERENCES questions(id), remote_id TEXT UNIQUE NOT NULL,
+      snapshot TEXT NOT NULL, reply_fingerprint TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS simulation_sms (
+      phone TEXT NOT NULL, purpose TEXT NOT NULL, code TEXT NOT NULL, sent_at BIGINT NOT NULL,
+      PRIMARY KEY(phone,purpose)
+    );
+    CREATE TABLE IF NOT EXISTS sync_health (
+      id INTEGER PRIMARY KEY CHECK(id=1), last_attempt_at BIGINT, last_success_at BIGINT,
+      consecutive_failures INTEGER NOT NULL DEFAULT 0, last_error TEXT
+    );
+    INSERT INTO sync_health(id) VALUES(1) ON CONFLICT DO NOTHING;
     CREATE TABLE IF NOT EXISTS sessions (
       token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), expires_at BIGINT NOT NULL
     );
@@ -42,15 +63,19 @@ export async function connectDatabase(connectionString, eventSlug) {
       decision TEXT NOT NULL, feedback TEXT NOT NULL, due_at BIGINT NOT NULL, applied_at BIGINT,
       error TEXT
     );
+    ALTER TABLE review_queue ADD COLUMN IF NOT EXISTS review_round INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE review_queue ADD COLUMN IF NOT EXISTS internal_note TEXT NOT NULL DEFAULT '';
     CREATE TABLE IF NOT EXISTS review_history (
       id BIGSERIAL PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), kind TEXT NOT NULL,
       previous_state TEXT, decision TEXT NOT NULL, feedback TEXT NOT NULL, created_at BIGINT NOT NULL,
       source TEXT NOT NULL
     );
+    ALTER TABLE review_history ADD COLUMN IF NOT EXISTS review_round INTEGER NOT NULL DEFAULT 0;
     CREATE TABLE IF NOT EXISTS remote_records (
       kind TEXT NOT NULL, user_id TEXT NOT NULL REFERENCES users(id), remote_id TEXT NOT NULL,
       snapshot TEXT NOT NULL, review_fingerprint TEXT NOT NULL, PRIMARY KEY(kind,user_id), UNIQUE(kind,remote_id)
     );
+    ALTER TABLE remote_records ADD COLUMN IF NOT EXISTS review_round INTEGER NOT NULL DEFAULT 0;
     CREATE TABLE IF NOT EXISTS feishu_files (
       file_id TEXT PRIMARY KEY REFERENCES files(id), file_token TEXT NOT NULL
     );
