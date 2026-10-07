@@ -1,6 +1,6 @@
 {
   "name": "generated-event-instance",
-  "version": "3.0.0",
+  "version": "4.0.0",
   "private": true,
   "type": "module",
   "workspaces": [
@@ -20,6 +20,7 @@
     "feishu:plan": "node backend/feishu-init.js --plan",
     "feishu:apply": "node backend/feishu-init.js --apply",
     "check:integration": "node backend/check.js",
-    "test:pages": "npm run test:pages --workspace frontend && node frontend/test/export-pages.mjs ."
+    "test:pages": "npm run test:pages --workspace frontend && node frontend/test/export-pages.mjs .",
+    "test:windows": "node backend/test/windows-regression.mjs"
   }
 }

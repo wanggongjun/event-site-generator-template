@@ -1,38 +1,39 @@
-# v3 验证与未验项目
+# v4 验证与未验项目
 
-2026-10-07。本轮基于GitHub main `bc2a3c7f152e2e0fb27446a40c0d71223fed437b`，开始时对98个文件逐Git blob校验一致；用户README的panshi命名保留，旧版本从当前树移除，可由Git历史恢复。本轮源码版本3.0.0，不推送、不部署、不改真实飞书。
+2026-10-07。基于GitHub main `9d6f00c54b77aeb1a6aa78c5d6080df316ab386c`，改动前94个文件内容与Git模式逐blob一致，工作树为 `7cf62a9ce7ce23ae474bb2b3823cbe17fb403aaa`。保留用户README的panshi命名、v3真实服务默认及既有业务；版本4.0.0。此版本只发布模板源码，不部署生产、不修改真实飞书；当前旧包移除，历史提交保留，不以ZIP上传为交付前提。
 
-## 已完成的本地验证
+## 最终代码已验证
 
-- Python生成/引用/横幅绑定/打包输入一致性：42项通过
-- 后端全量：63项通过，使用全新隔离真实PostgreSQL16，飞书HTTP与短信provider明确mock
-- 其中飞书初始化/adapter/SMS定向37项：plan零资源写、精确base授权、三表重复apply复用、异名兼容表、字段类型/状态选项冲突、权限类别、并发/中断恢复、分页、创建幂等、附件缓存、工作人员字段不被回写、新旧轮次及表/记录失败隔离
-- 两用户私有问题创建/查询隔离、请求重试去重、DB拒绝写入不报成功、单回复更新/清空、越权记录404、缺飞书默认生产拒绝、内部备注不出API
-- 完整server事务+实际FeishuBitable的HTTP mock闭环，包含旧轮次忽略、新轮审核、录用去重；mock不等于真实租户联通
-- 从虚构完整XLSX新生成实例：production build、16项React/jsdom状态与SSR回归、测试目录中的六页渲染及DOM/本地链接检查通过
-- 六页与public配置/bundle无readiness、sourceNotes、heroWarning、模拟入口/验证码或构建预览诊断；正常按钮实际API失败没有假成功
-- 原停机回归迁移至独立开发CLI后，通过SIGTERM/SIGINT→重新生成→重启3周期，保留完整账号/投稿/补料轮次/私有附件/参会资格
-- 样例会议指南render_docx.py渲染4页，逐页检查无空白页、缺字、裁切或表格溢出；不限制其他活动页数
-- SKILL frontmatter验证通过，主入口短化并将具体操作放入文档；本地Markdown链接及git diff --check通过
+执行环境为Linux、非root用户、Node24.19.0、锁定embedded-postgres16.14.0-beta.17（实际PG16）。以下通过均不表示Windows实机或真实外部服务通过。
 
-## 尚未验证
+- Python生成/引用/横幅绑定/打包一致性：42/42
+- 新生成消费实例独立npm ci，production build成功
+- 新生成消费实例后端全量：73/73，无跳过；其中新增PG测试10项，含Windows中文/空格exe与目录的无shell参数mock、退出等待/超时、PID保护、已退出进程、失败保留、禁止非持久化与非法端口、真实PG三次重启及启动失败恢复、重复stop与连接池关闭一次
+- POSIX非秘密IDs文件0600通过；所有平台同一内容/无密钥/白名单/秘密env拒覆盖测试继续执行。Windows分支不再将mode当ACL；NTFS ACL实机未验
+- React/jsdom状态与SSR回归：16/16；六页渲染及DOM/本地链接检查通过，公开页面没有模拟验证码、内部诊断或准备度提示
+- 新生成实例完整业务SIGTERM/SIGINT → 重新生成 → 重启3周期通过，账号、投稿补料轮次、私有附件、录用与去重参会资格保持
+- Windows自动回归脚本的完整受控IPC流程在临时Linux副本验证通过：三次重启、重复关闭、账户/资料/附件/二审/资格保持，以及配置错误、loopback限制、HTTP端口占用的非零失败清理。原脚本在Linux运行明确SKIP，不计Windows实机通过
+- 独立审核另19项定向验证通过，包含Linux SIGTERM/SIGINT、HTTP占用失败code1、未完成HTTP请求的SIGINT收尾、默认win32→windows-x64模块解析与参数mock、已退出子进程残留PID保护
+- git diff --check、本地文档链接及生成实例包含同一修复文件通过
 
-- 没有真实飞书App Secret/目标base与权限配置，因此真实建表、记录写入、附件上传、工作人员审核/问答回读端到端未验
-- 真实短信投递/签名模板、预发布HTTPS Cookie和正式部署未验
-- 真正桌面/手机浏览器视觉、触控、表单操作未验；SSR/build/jsdom/HTTP mock不能替代
-- 生产备份恢复、跨OS运行和Microsoft Word渲染未验；本地重启保持不能称灾备已验证
-- 真实活动的容量和窗口未由本虚构样例替代；交付实际活动前仍需负责人确认
+## 未验与边界
+
+- Windows本机PG进程、真实PowerShell/CMD Ctrl+C、NTFS ACL未验；一键脚本是留给Windows执行者的验证入口，不是实测证明
+- 没有真实飞书App Secret/目标base及权限，真实建表、记录写入、附件上传、工作人员审核与问答回读未验
+- 真实短信投递、签名模板、HTTPS Cookie与生产部署未验；mock/check通过不能写完整生产已部署
+- 桌面/手机真实浏览器视觉、触控、表单操作未验，SSR/build/jsdom不替代浏览器验收
+- 生产备份恢复与Word跨平台渲染未验；本地重启保留不等于灾备恢复通过
 
 ## 复跑
 
-模板根建立README中的项目venv后：
+按README建立项目venv，在模板根：
 
 ```sh
 .venv/bin/python -m unittest discover -s tests -p 'test_*.py'
 .venv/bin/python scripts/generate.py input/fictional-conference.xlsx --output /absolute/path/to/new-instance
 ```
 
-进入新实例：
+Windows替换Python路径为 `.\.venv\Scripts\python.exe`。进入新实例：
 
 ```sh
 npm ci
@@ -40,16 +41,13 @@ npm run build
 npm test
 npm run test:frontend
 npm run test:pages
+npm run test:windows
 ```
 
-模板根运行 `tests/validate_public_pages.py` 检查上述实例的test-evidence/public-pages；该输出仅QA，不进成品包或交付入口。完整持久化生命周期需要新的fixture、已安装实例与源模板Python：
+最后一条仅Windows实机执行回归；其他平台明确SKIP。在模板根跑 `tests/validate_public_pages.py <实例>` 检查测试页面，本地QA输出不进成品包。Linux完整生命周期需新fixture、已安装实例及源模板Python：
 
 ```sh
 node template/backend/test/shutdown-lifecycle.mjs /absolute/path/to/new-fixture /absolute/path/to/installed-instance .venv/bin/python
 ```
 
-对照manifest的输入/配置/public配置/模板/产物SHA；公开镜像不再和私有配置同字节。飞书plan/apply/check及预发布验收按deployment-handoff.md。无凭据时只交付代码与本地证据，不能写生产已就绪或系统已接通。
-
-## 当前交付
-
-当前树与交付附件仅保留v3，旧文件入口已移除，Git历史没有重写。本轮成品包不带测试页面/测试输出，不把测试页作为客户展示入口。
+Windows启停、端口、数据目录和脚本边界见 [Windows运行说明](windows.md)。真实接入及预发布验收按 [接入与运行](deployment-handoff.md)。

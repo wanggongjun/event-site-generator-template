@@ -24,7 +24,7 @@ from zipfile import ZipFile, ZIP_DEFLATED
 import openpyxl
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = '3.0.0'
+VERSION = '4.0.0'
 MAX_WORKBOOK_BYTES = 10 * 1024 * 1024
 MAX_ASSET_BYTES = 20 * 1024 * 1024
 SAFE_ASSET_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.webp', '.pdf', '.docx', '.pptx'}

@@ -50,7 +50,10 @@ test('applying twice creates three fixed tables once and saves only reloadable n
     assert.equal(second.ready, true); assert.equal(second.applied.length, 0); assert.equal(remote.writes().length, 3);
     const content = await readFile(outputFile, 'utf8'); assert.equal(content.includes('SECRET'), false); assert.equal(content.includes('FEISHU_APP_ID='), false);
     for (const [key, value] of Object.entries(first.env)) assert.match(content, new RegExp(`^${key}=${value}$`, 'm'));
-    assert.equal((await stat(outputFile)).mode & 0o777, 0o600);
+    assert.equal((await stat(outputFile)).isFile(), true);
+    // Windows mode bits do not represent NTFS ACLs. The same content/secret
+    // exclusion and overwrite-preservation assertions run on every platform.
+    if (process.platform !== 'win32') assert.equal((await stat(outputFile)).mode & 0o777, 0o600);
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 

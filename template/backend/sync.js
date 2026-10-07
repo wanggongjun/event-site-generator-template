@@ -1,7 +1,10 @@
 import { resolve } from 'node:path';
 import pg from 'pg';
+import AsyncExitHook from 'async-exit-hook';
 import { createServer } from './server.js';
 import { startLocalPostgres } from './local-postgres.js';
+// The explicit finally below owns cleanup and preserves the command exit code.
+for (const event of ['beforeExit', 'exit']) AsyncExitHook.unhookEvent(event);
 let local, databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl && (process.env.APP_MODE || 'real') === 'simulation') {
   const port = Number(process.env.PG_PORT || 55432);
@@ -11,6 +14,10 @@ if (!databaseUrl && (process.env.APP_MODE || 'real') === 'simulation') {
   catch { local = await startLocalPostgres({ dataDir: process.env.PG_DATA_DIR || resolve(process.env.APP_ROOT || resolve(import.meta.dirname, '..'), 'backend/data/postgres'), port }); databaseUrl = local.connectionString; }
   finally { await probe.end(); }
 }
-const server = await createServer({ databaseUrl, autoSync: false });
-try { console.log(JSON.stringify(await server.syncReviews({ force: process.argv.includes('--force') }))); }
-finally { await server.shutdown(); await local?.stop(); }
+let server;
+try {
+  server = await createServer({ databaseUrl, autoSync: false });
+  console.log(JSON.stringify(await server.syncReviews({ force: process.argv.includes('--force') })));
+} finally {
+  try { await server?.shutdown(); } finally { await local?.stop(); }
+}

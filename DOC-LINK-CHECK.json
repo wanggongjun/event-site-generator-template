@@ -1,7 +1,9 @@
 {
-  "localMarkdownLinksVerified": 14,
-  "currentVersion": "3.0.0",
-  "baselineMain": "bc2a3c7f152e2e0fb27446a40c0d71223fed437b",
+  "localMarkdownLinksVerified": 19,
+  "currentVersion": "4.0.0",
+  "baselineMain": "9d6f00c54b77aeb1a6aa78c5d6080df316ab386c",
   "historyPreserved": true,
-  "currentAttachmentsVersion": "3.0.0"
+  "currentAttachmentsVersion": null,
+  "delivery": "source-only",
+  "windowsNativeTested": false
 }

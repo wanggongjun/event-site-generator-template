@@ -140,6 +140,8 @@ export async function writeFeishuIds(filename, env) {
     if (!previous.startsWith('# Generated non-secret Feishu resource IDs.') || previous.split(/\r?\n/).some(line => line.trim() && !line.startsWith('#') && !keys.includes(line.split('=')[0]))) throw new Error('Refusing to overwrite an existing non-generated file with Feishu IDs.');
   } catch (error) { if (error.code !== 'ENOENT') throw error; }
   const temporary = `${path}.${process.pid}.${Date.now()}.tmp`;
+  // Resource IDs only. POSIX restricts these to 0600; Windows mode bits do not
+  // configure NTFS ACLs. Actual credentials must remain in operator-managed Secrets.
   const file = await open(temporary, 'wx', 0o600);
   try { await file.writeFile(body); await file.close(); await rename(temporary, path); }
   catch (error) { await file.close().catch(() => {}); await unlink(temporary).catch(() => {}); throw error; }

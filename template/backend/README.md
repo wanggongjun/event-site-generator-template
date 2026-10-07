@@ -1,4 +1,4 @@
-# 独立活动后端 v3
+# 独立活动后端 v4
 
 Node24 + PostgreSQL。默认真实短信与飞书三表；不创建网站admin/账号。活动内容只由唯一XLSX生成，飞书只处理审核/私有问题回复。密钥放部署Secret/env，原`.env.example`不含可用凭据。
 
@@ -16,6 +16,8 @@ node --env-file=.env.production --env-file=.env.feishu.ids backend/start.js
 ```
 
 FEISHU_BITABLE_URL支持官方base/wiki目标（wiki必须解析到bitable），或已知APP_TOKEN。plan只读、列出复用/新增/冲突，apply只加表/字段、不删记录、不改权限；缺选项/类型冲突停止，不全量替换已有SingleSelect属性。重复apply复用已完成操作。建表资源授权、应用scope和协作者权限分别验证，check只证明结构读取和运行配置，不能代表真实写出/回读/短信验收。
+
+自动保存的 `.env.feishu.ids` 只含四个非秘密资源IDs，不写App Secret/凭据，也拒绝覆盖已有的秘密env。POSIX文件0600；Windows文件权限继承所在目录ACL，脚本没有自动加固NTFS ACL，不能把mode数值当ACL保护。真实密钥始终由部署Secret或受保护的本机配置管理，所有运行时env仍排除于Git和交付包。
 
 首次生产start在本活动数据库建表/加列，保留已有业务。check不做迁移，未初始化会明确报告。一个库只能属于一个活动slug，不能偷偷复用另一活动账号。
 

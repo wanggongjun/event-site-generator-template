@@ -368,12 +368,12 @@ test('embedded PostgreSQL bootstrap reuses existing cluster without reinitializi
   pool.on('error', error => { if (!pool.ending) throw error; });
   try {
     await pool.query("CREATE TABLE keep_record(value text); INSERT INTO keep_record VALUES('persistent')");
-    await pool.end(); await cluster.stop();
+    await pool.end(); pool = undefined; await cluster.stop(); cluster = undefined;
     cluster = await startLocalPostgres({ dataDir, port, persistent: true });
     pool = new pg.Pool({ connectionString: cluster.connectionString });
     pool.on('error', error => { if (!pool.ending) throw error; });
     assert.equal((await pool.query('SELECT value FROM keep_record')).rows[0].value, 'persistent');
-  } finally { await pool.end(); await cluster.stop(); }
+  } finally { await pool?.end(); await cluster?.stop(); }
 });
 
 

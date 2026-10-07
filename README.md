@@ -1,8 +1,8 @@
-# 活动网站与系统生成模板 v3
+# 活动网站与系统生成模板 v4
 
 可重复运行的代码模板，由唯一 XLSX 和配套公共素材生成一场独立的中文会议、论坛或实训活动。保留panshi原站的公开端视觉与认证交互，后台收敛为固定的参会报名、在线投稿和私有问答模型，不需要下一位 Agent 从零重写应用。交付分为两部分：可复用模板源码包，以及由活动资料生成的实际活动实例包。
 
-v3 默认使用真实服务，飞书是唯一审核与回复入口。缺凭据仍可生成代码、物料和静态六页，但不能称为完整生产系统。代码/本地测试/真实服务验收分开记录，见 [验证边界](docs/VALIDATION.md)。本次不推送或部署任何真实系统。
+v4 默认使用真实服务，飞书是唯一审核与回复入口。缺凭据仍可生成代码、物料和静态六页，但不能称为完整生产系统。代码/本地测试/真实服务验收分开记录，见 [验证边界](docs/VALIDATION.md)。本次不推送或部署任何真实系统。
 
 ## 1. 一次准备资料
 
@@ -88,7 +88,7 @@ node --env-file=.env.production --env-file=.env.feishu.ids backend/sync.js
 
 ## 更新、备份与交付
 
-只改原XLSX/公共素材，重新生成、build并正常重启。保留数据库、附件、env和未知用户文件，不更换已有slug。一个PG目录只允许一个运行所有者，不能删除postmaster.pid绕过保护。停止原启动终端Ctrl+C，等Node/PG完整退出。
+只改原XLSX/公共素材，重新生成、build并正常重启。保留数据库、附件、env和未知用户文件，不更换已有slug。一个PG目录只允许一个运行所有者，不能删除postmaster.pid绕过保护。停止原启动终端Ctrl+C，等“Shutdown complete”及终端返回；不要强杀或直接关终端。Windows官方pg_ctl正常停机与一键回归见 [Windows运行说明](docs/windows.md)。
 
 ```sh
 .venv/bin/python scripts/package_delivery.py --destination ../template-source-delivery --zip ../template-source.zip
@@ -97,6 +97,6 @@ node --env-file=.env.production --env-file=.env.feishu.ids backend/sync.js
 
 两包分开；排除依赖、数据库、用户附件、日志、运行时env。实例source-input是追溯快照，不是第二份编辑源。备份、恢复、告警、真实预发布验收见 [接入与运行](docs/deployment-handoff.md)。生成/打包不授权购买服务、创建外部账号、推GitHub或部署。
 
-## v3 交付
+## v4 源头修复
 
-当前源码和附件只保留v3。下载入口、正常可运行的虚构样例与物料、验收说明见 [v3交付索引](https://github.com/wanggongjun/event-site-generator-template/blob/main/attachments/v3.0/README.md)。本轮基于main `bc2a3c7f152e2e0fb27446a40c0d71223fed437b`，保留用户README的panshi命名；旧提交留在Git历史。
+v4基于main `9d6f00c54b77aeb1a6aa78c5d6080df316ab386c`，修复Windows内嵌PG强杀/残留锁、重复关闭和跨平台权限断言。保留用户README的panshi命名与v3业务；没有Windows实机结果就明确未实测，详见 [验证边界](docs/VALIDATION.md)。本轮只交付源码，当前旧v3附件已移除；旧提交留在Git历史。

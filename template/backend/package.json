@@ -1,6 +1,6 @@
 {
   "name": "event-template-backend",
-  "version": "3.0.0",
+  "version": "4.0.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -14,6 +14,7 @@
   "dependencies": {
     "bcryptjs": "3.0.2",
     "pg": "8.16.3",
-    "embedded-postgres": "16.14.0-beta.17"
+    "embedded-postgres": "16.14.0-beta.17",
+    "async-exit-hook": "2.0.1"
   }
 }

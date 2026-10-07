@@ -64,6 +64,8 @@ export async function createServer(options = {}) {
   const now = options.now || (() => Date.now());
   const rates = new Map();
   let syncing = false;
+  let syncPromise;
+  let shutdownPromise;
   let syncError = null;
   let lastSyncAt = null;
   let timer;
@@ -230,7 +232,13 @@ export async function createServer(options = {}) {
       return true;
     });
   }
-  async function syncReviews({ force = false } = {}) {
+  function syncReviews(options = {}) {
+    if (shutdownPromise) return Promise.reject(new Error('Server is shutting down.'));
+    if (syncing) return Promise.resolve({ busy: true });
+    syncPromise = runSyncReviews(options);
+    return syncPromise;
+  }
+  async function runSyncReviews({ force = false } = {}) {
     if (syncing) return { busy: true };
     if (force && mode !== 'simulation') throw new Error('Force synchronization is simulation-only.');
     syncing = true;
@@ -521,6 +529,10 @@ export async function createServer(options = {}) {
   };
   server.database = db;
   server.runtime = { mode, origin, pollSeconds, configPath, appRoot };
-  server.shutdown = async () => { clearInterval(timer); if (server.listening) await new Promise(resolve => server.close(resolve)); if (ownPool) await db.end(); };
+  server.shutdown = () => shutdownPromise ||= (async () => {
+    clearInterval(timer);
+    try { if (server.listening) await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
+    finally { await syncPromise?.catch(() => {}); if (ownPool) await db.end(); }
+  })();
   return server;
 }
