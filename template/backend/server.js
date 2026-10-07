@@ -6,11 +6,12 @@ import bcrypt from 'bcryptjs';
 import { connectDatabase, assertEventDatabase, transaction } from './database.js';
 import { SimulationSms, createRealSms, SimulationFeishu, FeishuBitable } from './adapters.js';
 import { detectDocument } from './files.js';
+import { businessReadiness, knownCapacity, windowTime } from './readiness.js';
 
 class ApiError extends Error {
-  constructor(status, code, message) { super(message); this.status = status; this.code = code; }
+  constructor(status, code, message, details = {}) { super(message); this.status = status; this.code = code; this.details = details; }
 }
-const fail = (status, code, message) => { throw new ApiError(status, code, message); };
+const fail = (status, code, message, details) => { throw new ApiError(status, code, message, details); };
 const digest = value => createHash('sha256').update(value).digest('hex');
 const id = () => randomBytes(18).toString('base64url');
 const clean = (value, max = 1000, label = '字段') => {
@@ -59,7 +60,7 @@ export async function createServer(options = {}) {
     const parsed = JSON.parse(await readFile(configPath, 'utf8'));
     if (!parsed.event?.title) throw new Error('config.json requires event.title.');
     if (parsed.event?.slug !== eventSlug) throw new Error('Event slug changed while running; a different event requires a separate database.');
-    return parsed;
+    return { ...parsed, readiness: businessReadiness(parsed) };
   }
   const pollSeconds = Math.max(1, Math.min(3600, Number(env.SYNC_POLL_SECONDS || initialConfig.sync?.pollSeconds || 60)));
   const takeRate = (key, limit, windowMs) => {
@@ -131,16 +132,24 @@ export async function createServer(options = {}) {
     if (files.length !== ids.length) fail(403, 'FILE_FORBIDDEN', '只能使用自己的附件');
     return files;
   }
-  function checkWindow(cfg, kind, supplement = false) {
+  function checkWindow(cfg, kind, supplement = false, draft = false) {
     const settings = cfg[kind] || {};
     if (settings.enabled === false) fail(403, 'MODULE_DISABLED', '此功能未开放');
-    const open = settings.openAt ? Date.parse(settings.openAt) : NaN;
-    const close = supplement ? Date.parse(settings.supplementCloseAt || settings.closeAt || '') : Date.parse(settings.closeAt || '');
+    if (!draft) {
+      const readiness = businessReadiness(cfg);
+      if (!readiness[`${kind}Enabled`]) {
+        const unresolved = readiness.unresolved.filter(item => item.key === 'event.capacity' || item.key.startsWith(`${kind}.`));
+        fail(409, 'EVENT_FACTS_UNRESOLVED', `会务信息未确认，相应提交暂未开放。暂不能正式${kind === 'attendance' ? '报名' : supplement ? '补交材料' : '投稿'}。${unresolved.map(item => `${item.key}：${item.reason}`).join(' ')}`, { unresolved });
+      }
+    }
+    const open = windowTime(settings.openAt);
+    const close = windowTime(supplement ? settings.supplementCloseAt || settings.closeAt : settings.closeAt);
+    if (supplement && !Number.isFinite(close)) fail(409, 'EVENT_FACTS_UNRESOLVED', '补充材料截止时间待主办方确认，请补全 submission.supplementCloseAt 后重新生成配置。', { unresolved: [{ key: 'submission.supplementCloseAt', reason: '补充材料截止时间须为含时区的日期时间。' }] });
     if (Number.isFinite(open) && now() < open || Number.isFinite(close) && now() > close) fail(409, 'WINDOW_CLOSED', '此申请窗口尚未开放或已截止');
   }
   async function stats(cfg, client = db) {
     const counts = await one(`SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE attendance_status='accepted')::int AS manual, COUNT(*) FILTER (WHERE submission_status='accepted')::int AS submissions FROM business WHERE attendance_status='accepted' OR submission_status='accepted'`, [], client);
-    const capacity = Number(cfg.event?.capacity) || null;
+    const capacity = knownCapacity(cfg);
     return { total: counts.total, manualApprovals: counts.manual, acceptedSubmissions: counts.submissions, capacity, capacityWarning: Boolean(capacity && counts.total >= capacity) };
   }
   function attendanceView(row) {
@@ -233,7 +242,7 @@ export async function createServer(options = {}) {
         if (req.headers.origin !== origin) fail(403, 'ORIGIN_FORBIDDEN', '请求来源不被允许');
         takeRate(`all:${req.socket.remoteAddress}`, 180, 60000);
       }
-      if (path === '/api/public/config' && method === 'GET') return send(res, 200, { config: currentConfig, runtime: { mode, smsMode: mode, feishuMode, pollSeconds } });
+      if (path === '/api/public/config' && method === 'GET') return send(res, 200, { config: currentConfig, readiness: businessReadiness(currentConfig), runtime: { mode, smsMode: mode, feishuMode, pollSeconds } });
       if (path === '/api/auth/sms/request' && method === 'POST') {
         const body = await readBody(req), phone = normalizePhone(body.phone), purpose = body.purpose;
         if (!['register', 'reset'].includes(purpose)) fail(400, 'INVALID_PURPOSE', '验证码用途不正确');
@@ -325,7 +334,7 @@ export async function createServer(options = {}) {
         }
         if (path === '/api/me/submission' && method === 'GET') return send(res, 200, { submission: await submissionView(row, user.id, cfg) });
         if (path === '/api/me/submission' && method === 'PUT') {
-          checkWindow(cfg, 'submission');
+          checkWindow(cfg, 'submission', false, true);
           const body = await readBody(req), data = submissionData(body);
           const updated = await transaction(db, async client => {
             const current = await one('SELECT * FROM business WHERE user_id=$1 FOR UPDATE', [user.id], client);
@@ -437,7 +446,7 @@ export async function createServer(options = {}) {
       if (error.code === '23505') return send(res, 409, { error: { code: 'CONFLICT', message: '已存在此记录' } });
       const status = error.status || 500;
       if (status === 500) options.onError?.(error);
-      send(res, status, { error: { code: error.code || 'INTERNAL_ERROR', message: status === 500 ? '服务暂时不可用，请稍后重试' : error.message } });
+      send(res, status, { error: { code: error.code || 'INTERNAL_ERROR', message: status === 500 ? '服务暂时不可用，请稍后重试' : error.message, ...(status < 500 ? error.details : {}) } });
     }
   });
   if (options.autoSync !== false) {

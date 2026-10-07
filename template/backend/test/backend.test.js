@@ -12,7 +12,8 @@ import { startLocalPostgres } from '../local-postgres.js';
 import { detectDocument } from '../files.js';
 
 let root, local, admin, server, dbUrl, origin, clock = Date.now(), phoneIndex = 100;
-const baseConfig = { event: { slug: 'test-conference', title: '测试学术会议', capacity: 1 }, attendance: {}, submission: {}, files: { maxFileBytes: 20 * 1048576, maxAttachments: 3, allowedExtensions: ['pdf', 'docx', 'pptx'] }, sync: { pollSeconds: 60 } };
+const openWindow = { openAt: '2000-01-01T00:00:00Z', closeAt: '2099-01-01T00:00:00Z' };
+const baseConfig = { event: { slug: 'test-conference', title: '测试学术会议', capacity: 1 }, attendance: { ...openWindow }, submission: { ...openWindow }, files: { maxFileBytes: 20 * 1048576, maxAttachments: 3, allowedExtensions: ['pdf', 'docx', 'pptx'] }, sync: { pollSeconds: 60 } };
 const pdf = Buffer.from('%PDF-2.0\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF\n').toString('base64');
 const freePort = async () => { const socket = net.createServer(); await new Promise(resolve => socket.listen(0, '127.0.0.1', resolve)); const port = socket.address().port; await new Promise(resolve => socket.close(resolve)); return port; };
 const schema = `test_event_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -179,10 +180,114 @@ test('config regeneration changes public content without erasing accounts, files
   await restarted.shutdown();
 });
 
+test('unknown event capacity/windows permit SMS auth, profile, private upload and draft but reject both final applications without mutation', async () => {
+  const unknown = { ...baseConfig, event: { ...baseConfig.event, capacity: null, startDate: '2026-09-05', endDate: '2026-09-08', startAt: null, endAt: null }, attendance: { openAt: null, closeAt: null }, submission: { openAt: null, closeAt: null, supplementCloseAt: null }, readiness: { mode: 'ready', unresolved: [], attendanceEnabled: true, submissionEnabled: true } };
+  await writeFile(join(root, 'config.json'), JSON.stringify(unknown));
+  const publicData = await call('/api/public/config');
+  assert.equal(publicData.status, 200); assert.equal(publicData.body.readiness.mode, 'preview'); assert.equal(publicData.body.runtime.mode, 'simulation');
+  assert.deepEqual(publicData.body.config.readiness, publicData.body.readiness);
+  assert.equal(publicData.body.config.event.capacity, null); assert.equal(publicData.body.config.event.startAt, null); assert.equal(publicData.body.config.event.startDate, '2026-09-05');
+  assert.deepEqual(publicData.body.readiness.unresolved.map(item => item.key), ['event.capacity', 'attendance.openAt', 'attendance.closeAt', 'submission.openAt', 'submission.closeAt']);
+  assert.equal(publicData.body.readiness.attendanceEnabled, false); assert.equal(publicData.body.readiness.submissionEnabled, false);
+  const user = await account();
+  const login = await call('/api/auth/login', { method: 'POST', body: { phone: user.phone, password: 'Password-1234' } }); assert.equal(login.status, 200);
+  assert.equal((await call('/api/me/profile', { cookie: login.cookie })).status, 200);
+  const prepared = await draft(user); assert.equal(prepared.status, 'draft'); assert.equal(prepared.reviewRound, 0);
+  assert.equal((await call('/api/me/profile', { method: 'PATCH', cookie: user.cookie, body: { department: '预览时补充资料' } })).status, 200);
+  const before = (await server.database.query('SELECT to_jsonb(b) AS data FROM business b WHERE user_id=$1', [user.id])).rows[0].data;
+  for (const path of ['/api/me/attendance', '/api/me/submission/submit']) {
+    const refused = await call(path, { method: 'POST', cookie: user.cookie, body: {} });
+    assert.equal(refused.status, 409); assert.equal(refused.body.error.code, 'EVENT_FACTS_UNRESOLVED'); assert.match(refused.body.error.message, /主办方|待确认/); assert.ok(refused.body.error.unresolved.some(item => item.key === 'event.capacity'));
+  }
+  assert.deepEqual((await server.database.query('SELECT to_jsonb(b) AS data FROM business b WHERE user_id=$1', [user.id])).rows[0].data, before);
+  const attendance = await call('/api/me/attendance', { cookie: user.cookie }); assert.equal(attendance.body.attendanceStats.capacity, null); assert.equal(attendance.body.attendanceStats.capacityWarning, false);
+  assert.equal((await server.database.query('SELECT count(*)::int AS count FROM review_history')).rows[0].count, 0);
+  assert.equal((await call('/api/me/files/' + prepared.attachmentIds[0], { cookie: user.cookie, raw: true })).status, 200);
+});
+
+test('each unresolved operational field disables only affected final routes, including invalid or backwards windows', async () => {
+  const user = await account(); await draft(user);
+  const cases = [
+    ['event.capacity', cfg => { cfg.event.capacity = null; }, false, false],
+    ['attendance.openAt', cfg => { cfg.attendance.openAt = null; }, false, true],
+    ['attendance.closeAt', cfg => { delete cfg.attendance.closeAt; }, false, true],
+    ['submission.openAt', cfg => { cfg.submission.openAt = null; }, true, false],
+    ['submission.closeAt', cfg => { cfg.submission.closeAt = null; }, true, false],
+    ['submission.closeAt', cfg => { cfg.submission.closeAt = 'not-a-date'; }, true, false],
+    ['submission.closeAt', cfg => { cfg.submission.closeAt = cfg.submission.openAt; }, true, false],
+  ];
+  for (const [key, change, attendanceEnabled, submissionEnabled] of cases) {
+    const cfg = structuredClone(baseConfig); change(cfg); await writeFile(join(root, 'config.json'), JSON.stringify(cfg));
+    const data = (await call('/api/public/config')).body.readiness;
+    assert.equal(data.mode, 'preview'); assert.equal(data.attendanceEnabled, attendanceEnabled, key); assert.equal(data.submissionEnabled, submissionEnabled, key);
+    assert.ok(data.unresolved.some(item => item.key === key));
+    for (const [path, enabled] of [['/api/me/attendance', attendanceEnabled], ['/api/me/submission/submit', submissionEnabled]]) {
+      if (enabled) continue;
+      const refused = await call(path, { method: 'POST', cookie: user.cookie, body: {} }); assert.equal(refused.status, 409); assert.equal(refused.body.error.code, 'EVENT_FACTS_UNRESOLVED');
+      assert.ok(refused.body.error.unresolved.some(item => item.key === key));
+    }
+  }
+  await writeFile(join(root, 'config.json'), JSON.stringify(baseConfig));
+  assert.equal((await call('/api/public/config')).body.readiness.mode, 'ready');
+  assert.equal((await call('/api/me/attendance', { method: 'POST', cookie: user.cookie, body: {} })).status, 201);
+  const submitted = await call('/api/me/submission/submit', { method: 'POST', cookie: user.cookie, body: {} }); assert.equal(submitted.status, 200); assert.equal(submitted.body.submission.reviewRound, 1);
+});
+
+test('same-event unresolved regeneration preserves submitted rows/private files; staff approvals and corrections remain available with unknown capacity', async () => {
+  const user = await account(); const prepared = await submit(user);
+  assert.equal((await call('/api/me/attendance', { method: 'POST', cookie: user.cookie, body: {} })).status, 201);
+  const before = (await server.database.query('SELECT to_jsonb(b) AS data FROM business b WHERE user_id=$1', [user.id])).rows[0].data;
+  const unknown = { ...baseConfig, event: { ...baseConfig.event, capacity: null }, attendance: { openAt: null, closeAt: null }, submission: { openAt: null, closeAt: null, supplementCloseAt: null } };
+  await writeFile(join(root, 'config.json'), JSON.stringify(unknown));
+  assert.equal((await call('/api/public/config')).body.readiness.mode, 'preview');
+  assert.deepEqual((await server.database.query('SELECT to_jsonb(b) AS data FROM business b WHERE user_id=$1', [user.id])).rows[0].data, before);
+  const restarted = await createServer({ appRoot: root, databaseUrl: dbUrl, publicOrigin: origin, autoSync: false, now: () => clock });
+  try { assert.deepEqual((await restarted.database.query('SELECT to_jsonb(b) AS data FROM business b WHERE user_id=$1', [user.id])).rows[0].data, before); } finally { await restarted.shutdown(); }
+  for (const kind of ['submission', 'attendance']) await review(user, kind, 'accepted'); await sync();
+  let attendance = (await call('/api/me/attendance', { cookie: user.cookie })).body;
+  assert.equal(attendance.attendanceStats.total, 1); assert.equal(attendance.attendanceStats.capacity, null); assert.equal(attendance.attendanceStats.capacityWarning, false); assert.deepEqual(attendance.attendance.grantSources, ['manual_attendance', 'accepted_submission']);
+  await review(user, 'submission', 'needs_materials', '修正结果'); await sync();
+  const refused = await call('/api/me/submission/supplement', { method: 'POST', cookie: user.cookie, body: { note: '资料待确认期间尝试补交' } });
+  assert.equal(refused.status, 409); assert.equal(refused.body.error.code, 'EVENT_FACTS_UNRESOLVED');
+  assert.equal((await call('/api/me/submission', { cookie: user.cookie })).body.submission.reviewRound, 1);
+  attendance = (await call('/api/me/attendance', { cookie: user.cookie })).body; assert.deepEqual(attendance.attendance.grantSources, ['manual_attendance']);
+  await review(user, 'attendance', 'rejected'); await review(user, 'submission', 'accepted'); await sync();
+  attendance = (await call('/api/me/attendance', { cookie: user.cookie })).body;
+  assert.deepEqual(attendance.attendance.grantSources, ['accepted_submission']); assert.equal(attendance.attendanceStats.total, 1); assert.equal(attendance.attendanceStats.capacityWarning, false);
+  assert.equal((await call('/api/me/files/' + prepared.attachmentIds[0], { cookie: user.cookie, raw: true })).status, 200);
+  assert.equal((await server.database.query('SELECT count(*)::int AS count FROM users')).rows[0].count, 1);
+  const submission = (await call('/api/me/submission', { cookie: user.cookie })).body.submission;
+  assert.equal(submission.status, 'accepted'); assert.equal(submission.reviewRound, 1); assert.equal(submission.title, prepared.title);
+});
+
+test('Feishu-sourced review corrections keep their original business boundary in factual preview, using mocked provider transport', async () => {
+  const user = await account(); await submit(user);
+  assert.equal((await call('/api/me/attendance', { method: 'POST', cookie: user.cookie, body: {} })).status, 201);
+  await review(user, 'attendance', 'accepted'); await sync();
+  const cfg = { ...baseConfig, event: { ...baseConfig.event, capacity: null }, attendance: { openAt: null, closeAt: null }, submission: { openAt: null, closeAt: null } };
+  await writeFile(join(root, 'config.json'), JSON.stringify(cfg));
+  await server.database.query("INSERT INTO remote_records(kind,user_id,remote_id,snapshot,review_fingerprint) VALUES('submission',$1,'mock-review-record','initial','initial')", [user.id]);
+  let pending = [], exported = [];
+  const staff = await createServer({ appRoot: root, databaseUrl: dbUrl, publicOrigin: 'https://event.example.org', mode: 'real', smsAdapter: { send: async () => ({ mode: 'real' }) }, feishuAdapter: { pull: async () => pending.splice(0), export: async rows => { exported = rows; } }, autoSync: false, now: () => clock });
+  try {
+    for (const decision of ['accepted', 'needs_materials', 'accepted', 'rejected']) {
+      pending.push({ user_id: user.id, kind: 'submission', decision, feedback: '飞书模拟传输更正', remote_id: 'mock-review-record', fingerprint: `changed-${decision}-${clock++}` });
+      assert.equal((await staff.syncReviews()).applied, 1);
+      const state = (await call('/api/me/attendance', { cookie: user.cookie })).body;
+      assert.equal(state.attendanceStats.total, 1); assert.equal(state.attendanceStats.capacity, null); assert.equal(state.attendanceStats.capacityWarning, false);
+      assert.deepEqual(state.attendance.grantSources, decision === 'accepted' ? ['manual_attendance', 'accepted_submission'] : ['manual_attendance']);
+      const submission = (await call('/api/me/submission', { cookie: user.cookie })).body.submission;
+      assert.equal(submission.status, decision); assert.equal(submission.reviewRound, 1);
+      assert.equal(exported.find(record => record.kind === 'submission').status, decision);
+    }
+    assert.equal((await server.database.query("SELECT count(*)::int AS count FROM review_history WHERE source='feishu'")).rows[0].count, 4);
+  } finally { await staff.shutdown(); }
+});
+
 test('event windows, identity tampering, SMS retry limits and missing authentication fail safely', async () => {
   const user = await account();
   assert.equal((await call('/api/me/profile', { method: 'PATCH', cookie: user.cookie, body: { phone: '13900009999' } })).status, 400);
-  const config = { ...baseConfig, submission: { closeAt: new Date(clock - 1).toISOString() } }; await writeFile(join(root, 'config.json'), JSON.stringify(config));
+  const config = { ...baseConfig, submission: { ...baseConfig.submission, closeAt: new Date(clock - 1).toISOString() } }; await writeFile(join(root, 'config.json'), JSON.stringify(config));
   assert.equal((await call('/api/me/submission', { method: 'PUT', cookie: user.cookie, body: {} })).status, 409);
   assert.equal((await call('/api/me/attendance', { method: 'POST', cookie: user.cookie, body: {} })).status, 201);
   assert.equal((await call('/api/me/profile')).status, 401);
@@ -201,6 +306,11 @@ test('static SPA fallback and simulator are labeled; API never returns HTML', as
   const real = await createServer({ appRoot: root, databaseUrl: dbUrl, publicOrigin: 'https://event.example.org', mode: 'real', smsAdapter: { send: async () => ({ mode: 'real' }) }, feishuAdapter: { pull: async () => [], export: async () => {} }, autoSync: false });
   const port = await freePort(); await new Promise(resolve => real.listen(port, '127.0.0.1', resolve));
   const response = await fetch(`http://127.0.0.1:${port}/api/simulation/state`); assert.equal(response.status, 404);
+  const publicReal = await fetch(`http://127.0.0.1:${port}/api/public/config`).then(response => response.json());
+  assert.equal(publicReal.runtime.mode, 'real'); assert.equal(publicReal.readiness.mode, 'ready');
+  await writeFile(join(root, 'config.json'), JSON.stringify({ ...baseConfig, event: { ...baseConfig.event, capacity: null } }));
+  const previewReal = await fetch(`http://127.0.0.1:${port}/api/public/config`).then(response => response.json());
+  assert.equal(previewReal.runtime.mode, 'real'); assert.equal(previewReal.readiness.mode, 'preview');
   await real.shutdown();
 });
 

@@ -21,6 +21,8 @@ offline-preview/
 uploads/
 *.log
 *.zip
+!/attachments/v2.0/*.zip
+!/attachments/v2.0/*.zip.part*
 
 # Local agent settings and reference material
 .agents/

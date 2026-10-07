@@ -1,5 +1,6 @@
 """Generator regression tests; edit XLSX XML fixtures without another authoring tool."""
 from pathlib import Path
+from datetime import date
 import io
 import json
 import shutil
@@ -152,7 +153,13 @@ class GeneratorTests(unittest.TestCase):
         posts=(self.output/'materials/social-posts.txt').read_text();guide=(self.output/'materials/conference-guide.html').read_text()
         with ZipFile(self.output/'materials/conference-guide.docx') as z:doc=z.read('word/document.xml').decode()
         for text in (facts['title'],facts['dates'],facts['location']):
-            for artifact in (svg,hero,posts,guide,doc):self.assertIn(text,artifact)
+            for artifact in (svg,posts,guide,doc):self.assertIn(text,artifact)
+        # The branded hero uses a compact date label derived from the same dates.
+        from hero import _date_label
+        self.assertIn(_date_label(cfg['event']),hero)
+        self.assertIn('data-start-date="'+cfg['event']['startDate']+'"',hero)
+        self.assertIn('data-end-date="'+cfg['event']['endDate']+'"',hero)
+        self.assertIn(facts['title'],hero);self.assertIn(facts['location'],hero)
         self.assertIn('20MB',posts+guide+doc)
 
     def test_resource_requires_exactly_one_destination(self):
@@ -190,5 +197,137 @@ class GeneratorTests(unittest.TestCase):
         actual=self.base/'actual';actual.mkdir();self.output.symlink_to(actual,target_is_directory=True)
         with self.assertRaises(ConfigError):self.run_generate()
         self.assertEqual(list(actual.iterdir()),[])
+
+
+class V2HonestFactsTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp=tempfile.TemporaryDirectory(prefix='event-v2-facts-')
+        self.base=Path(self.tmp.name)
+        self.input=self.base/'input';shutil.copytree(ROOT/'input',self.input)
+        self.workbook=self.input/'fictional-conference.xlsx'
+        self.template=self.base/'template';self.template.mkdir()
+        (self.template/'package.json').write_text('{}')
+        self.output=self.base/'output'
+
+    def tearDown(self):self.tmp.cleanup()
+
+    def date_only(self):
+        import openpyxl
+        wb=openpyxl.load_workbook(self.workbook)
+        for row in wb['event'].iter_rows(min_row=2):
+            if row[0].value in ('event.startAt','event.endAt','event.capacity','attendance.openAt','attendance.closeAt','submission.openAt','submission.closeAt','submission.supplementCloseAt','home.target'):
+                row[1].value=None
+        wb['event'].append(['event.startDate',date(2027,3,18),'仅给出日期'])
+        wb['event'].append(['event.endDate',date(2027,3,19),'仅给出日期'])
+        wb['agenda']['B2']='全天';wb['agenda']['E2']=None
+        path=self.input/'honest.xlsx';wb.save(path);return path
+
+    def test_date_precision_unknown_capacity_and_windows_are_null(self):
+        config,_=load_config(self.date_only())
+        self.assertEqual(config['event']['startDate'],'2027-03-18')
+        self.assertEqual(config['event']['endDate'],'2027-03-19')
+        for key in ('startAt','endAt','capacity'):self.assertIsNone(config['event'][key])
+        for group in ('attendance','submission'):
+            self.assertIsNone(config[group]['openAt']);self.assertIsNone(config[group]['closeAt'])
+        self.assertEqual(config['readiness']['mode'],'preview')
+        self.assertEqual(len(config['readiness']['unresolved']),5)
+        self.assertFalse(config['readiness']['attendanceEnabled']);self.assertFalse(config['readiness']['submissionEnabled'])
+        self.assertEqual(config['agenda'][0]['time'],'全天')
+        self.assertEqual(config['agenda'][0]['location'],'地点待通知')
+        self.assertEqual(config['home']['target'],'')
+
+    def test_preview_materials_omit_unknown_numeric_and_date_placeholders(self):
+        generate(self.date_only(),self.output,self.template)
+        with ZipFile(self.output/'materials/conference-guide.docx') as z:doc=z.read('word/document.xml').decode()
+        texts=[doc,*[(self.output/'materials'/name).read_text() for name in ('poster.svg','social-posts.txt','conference-guide.html')]]
+        for text in texts:
+            for forbidden in ('1970','00:00-23:59','00:00—23:59','参会规模：1 人','参会规模：None','截止：None','适合参加：'):
+                self.assertNotIn(forbidden,text)
+            self.assertIn('预览',text)
+            self.assertIn('2027年03月18日至2027年03月19日',text)
+        self.assertIn('全天',doc);self.assertIn('地点待通知',doc)
+
+    def test_missing_time_is_semantic_and_known_bad_time_is_rejected(self):
+        import openpyxl
+        path=self.date_only();wb=openpyxl.load_workbook(path);wb['agenda']['B2']=None;wb.save(path)
+        config,_=load_config(path);self.assertEqual(config['agenda'][0]['time'],'时间待通知')
+        wb['agenda']['B2']='24:01';wb.save(path)
+        with self.assertRaises(ConfigError):load_config(path)
+
+    def test_independent_operation_readiness_and_date_conflict(self):
+        import openpyxl
+        path=self.date_only();wb=openpyxl.load_workbook(path)
+        replacements={'event.capacity':42,'attendance.openAt':'2027-01-01T09:00:00','attendance.closeAt':'2027-03-17T18:00:00'}
+        for row in wb['event'].iter_rows(min_row=2):
+            if row[0].value in replacements:row[1].value=replacements[row[0].value]
+        wb.save(path);config,_=load_config(path)
+        self.assertTrue(config['readiness']['attendanceEnabled']);self.assertFalse(config['readiness']['submissionEnabled'])
+        for row in wb['event'].iter_rows(min_row=2):
+            if row[0].value=='event.startAt':row[1].value='2027-03-17T09:00:00'
+        wb.save(path)
+        with self.assertRaises(ConfigError):load_config(path)
+
+
+    def test_html_direct_config_grouping_retains_all_distinct_speakers(self):
+        from materials import agenda_html
+        config,_=load_config(self.workbook)
+        first,second=config['agenda'][:2]
+        first['speakerGroup']=second['speakerGroup']='shared'
+        first['speaker']='Source speaker A';second['speaker']='Source speaker B'
+        html=agenda_html(config)
+        self.assertIn('Source speaker A<br>Source speaker B',html)
+        self.assertIn('rowspan="2"',html)
+
+    def test_group_metadata_cannot_hide_different_or_nonadjacent_facts(self):
+        import openpyxl
+        for conflict in ('different_speaker','nonadjacent_speaker','different_location'):
+            with self.subTest(conflict=conflict):
+                wb=openpyxl.load_workbook(self.workbook)
+                sheet=wb['agenda'];records=list(sheet.values)[1:];sheet.delete_rows(1,sheet.max_row)
+                sheet.append(['date','time','title','speaker','chair','location','timeGroup','topicGroup','speakerGroup','chairGroup','locationGroup'])
+                for index,record in enumerate(records):
+                    values=[record[0],record[1],record[2],record[3] or '', '', record[4], '', '', '', '', '']
+                    if conflict=='different_speaker' and index in (0,1):
+                        values[3]='A' if index==0 else 'B';values[8]='shared-speaker'
+                    elif conflict=='nonadjacent_speaker' and index in (0,2):
+                        values[3]='A';values[8]='shared-speaker'
+                    elif conflict=='different_location' and index in (0,1):
+                        values[5]='A' if index==0 else 'B';values[10]='shared-venue'
+                    sheet.append(values)
+                path=self.input/'bad-group.xlsx';wb.save(path)
+                with self.assertRaises(ConfigError):load_config(path)
+                self.assertFalse(self.output.exists())
+
+    @unittest.skipUnless((shutil.which('libreoffice') or shutil.which('soffice')) and Path('/home/agent/.codex/skills/builtins/documents/render_docx.py').is_file(),'Document renderer unavailable for optional rendered pagination regression')
+    def test_rendered_34_row_long_guide_has_no_blank_or_horizontal_overflow(self):
+        import subprocess
+        import os
+        import pdfplumber
+        from generate import deterministic_docx
+        config,_=load_config(self.workbook)
+        # Synthetic long fixture avoids hiding a pre-extracted event inside test answers.
+        from datetime import timedelta
+        start=date.fromisoformat(config['event']['startDate'])
+        config['event']['endDate']=(start+timedelta(days=4)).isoformat()
+        config['event']['startAt']=config['event']['endAt']=None
+        config['agenda']=[{'date':(start+timedelta(days=i//7)).isoformat(),'time':f'{9+i%7:02d}:00-{10+i%7:02d}:00','title':f'长议程测试主题 {i+1}','speaker':f'虚构讲者 {i+1}','chair':'虚构主持人','location':'虚构会场','chairGroup':f'day-{i//7}'} for i in range(34)]
+        config['home']['intro'].append('长段落回归测试。'+('科研训练与学科交流的说明应当自然分页，不能将整节或整张表锁在同一页。'*24))
+        path=self.base/'long-guide.docx';deterministic_docx(path,config)
+        renderer=Path('/home/agent/.codex/skills/builtins/documents/render_docx.py')
+        python=os.environ.get('CODEX_PRIMARY_RUNTIME_PYTHON',sys.executable)
+        result=subprocess.run([python,str(renderer),str(path),'--output_dir',str(self.base/'render'),'--emit_pdf'],capture_output=True,text=True,timeout=180)
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        pdf=next((self.base/'render').glob('*.pdf'))
+        with pdfplumber.open(pdf) as document:
+            self.assertGreater(len(document.pages),5)
+            for index,page in enumerate(document.pages,1):
+                text=page.extract_text() or ''
+                self.assertGreater(len(text.strip()),35,f'Blank/sparse page {index}')
+                for char in page.chars:
+                    self.assertGreaterEqual(char['x0'],-1,f'Left overflow page {index}')
+                    self.assertLessEqual(char['x1'],page.width+1,f'Right overflow page {index}')
+                    self.assertGreaterEqual(char['top'],-1,f'Top overflow page {index}')
+                    self.assertLessEqual(char['bottom'],page.height+1,f'Bottom overflow page {index}')
+        self.assertTrue(list((self.base/'render').glob('page-*.png')))
 
 if __name__=='__main__':unittest.main()

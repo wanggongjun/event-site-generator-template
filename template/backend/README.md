@@ -2,6 +2,18 @@
 
 Node 24, PostgreSQL (`pg`), legacy-compatible bcrypt cost 12 (`bcryptjs`). No SQLite fallback. Authentication remains SMS registration + password setting, phone/password login, and SMS password reset; there is no OTP-only login. A generated `config.json` is read on every request. Business data and private file bytes live in the separate PostgreSQL database. Regenerating event content never executes a database reset.
 
+## Unconfirmed event facts
+
+Missing facts are represented honestly: `event.capacity` may be `null`; attendance and submission `openAt`/`closeAt` may be `null`. `event.startDate`/`endDate` carry calendar-date precision; exact `startAt`/`endAt` are optional and never synthesized by the backend. Do not use capacity1, epoch dates, fabricated end-of-day times or a guessed application window to make a handbook-only instance run.
+
+`GET /api/public/config` includes factual `config.readiness` and an identical top-level `readiness`: `{mode:"preview"|"ready",unresolved:[{key,reason}],attendanceEnabled,submissionEnabled}`. The backend recalculates this from the current facts on every request and never trusts a stale generated `ready` flag. `runtime.mode` is separately `simulation` or `real`; a real adapter setup does not turn unknown facts into a ready event. Conversely, ready facts do not establish live-provider or production acceptance. Readiness describes confirmed configuration, not whether today's time is inside the window.
+
+Known capacity must be a positive integer. Each enabled application module needs a valid, offset-qualified opening and closing timestamp with opening strictly before closing. Missing capacity disables both final attendance and final submission, because accepted submissions grant attendance. Missing/invalid windows disable only the relevant module. Final attendance, final submission and supplement resubmission return HTTP409 with `error.code="EVENT_FACTS_UNRESOLVED"`, an actionable Chinese `message` and `error.unresolved:[{key,reason}]`. Complete the identified organizer facts and regenerate the same event configuration; no database reset is needed. Optional `submission.supplementCloseAt` retains the existing fallback to confirmed `submission.closeAt`; an unconfirmed base window cannot authorize a supplement.
+
+Preview still permits public content, SMS registration, password login/reset, private file upload/download, profile completion and submission draft preparation. Existing ownership, quotas, profile locks and post-submit editing restrictions remain in force. Known opening/closing bounds still prevent draft editing outside the window; unconfirmed bounds only permit preparation, never final submission. Drafts/uploads are private PostgreSQL records and are not exported to Feishu until an application is submitted. An explicitly disabled module still refuses its draft route.
+
+Regeneration to unknown facts does not rewrite submitted records, private files or existing grants. Staff review and corrections continue through the existing synchronization path. With unknown capacity, approved grants are still counted by distinct account, `attendanceStats.capacity` is `null` and `capacityWarning` is `false`; capacity is always a soft warning, never a staff-approval gate.
+
 ## Start
 
 For a local demo, run `npm start` without DATABASE_URL: the bundled embedded PostgreSQL starts on loopback port55432 with persistent data at `$APP_ROOT/backend/data/postgres`. Set `PG_PORT` or `PG_DATA_DIR` to override. This is a real PostgreSQL16 database, not an in-memory mock. Run exactly one owner for each data directory. Stop it with Ctrl+C or SIGTERM in its original terminal, wait for the process to exit and the PostgreSQL shutdown log, then regenerate/restart. A different terminal/tool namespace may not see the original PID or TCP listener while sharing its files. Startup refuses any existing postmaster.pid as active or unknown ownership; it never deletes the marker, resets data or tries recovery. An unexpected crash/stale marker or startup corruption requires operator diagnosis with the data preserved. The local-only demo credentials are not production credentials. For an existing PostgreSQL service or real deployment, set DATABASE_URL and the variables in `.env.example` in your shell (Node does not load this file automatically). Real mode never silently starts a demo database. `APP_ROOT` is the generated event's filesystem root; the defaults are `$APP_ROOT/config.json` and `$APP_ROOT/dist`. Optional `EVENT_CONFIG_PATH` and `STATIC_DIR` override those locations. The schema is initialized without deleting existing records. Use one database per event. A persisted event_slug guard claims each brand-new database for config.event.slug and rejects startup if another event tries to reuse it. Same-slug content updates remain valid. A nonempty older database without event metadata is refused, never silently claimed or reset; it requires an explicit operator migration or a separate database.
@@ -10,9 +22,9 @@ Simulation is the default and `start.js` refuses to expose it on non-loopback in
 
 ## API
 
-Every mutation uses JSON and requires `Origin` to exactly match `PUBLIC_ORIGIN`. Browser same-origin fetch supplies this. Errors are `{error:{code,message}}`. Authentication uses the `event_session` HttpOnly/SameSite=Strict cookie; real mode adds Secure. Never copy cookie or provider secrets into configuration.
+Every mutation uses JSON and requires `Origin` to exactly match `PUBLIC_ORIGIN`. Browser same-origin fetch supplies this. Errors are `{error:{code,message}}`, with `unresolved` added for unconfirmed event facts. Authentication uses the `event_session` HttpOnly/SameSite=Strict cookie; real mode adds Secure. Never copy cookie or provider secrets into configuration.
 
-- `GET /api/public/config` → `{config,runtime:{mode,smsMode,feishuMode,pollSeconds}}`
+- `GET /api/public/config` → `{config,readiness,runtime:{mode,smsMode,feishuMode,pollSeconds}}`; `config.readiness` is identical to top-level `readiness`
 - `POST /api/auth/sms/request` `{phone,purpose:"register"|"reset"}` → `{ok,mode,expiresIn,retryAfter}` and simulation-only `simulationCode` and warning
 - `POST /api/auth/register` `{phone,password,code}` → `{user:{id,phone},needsProfile:true}`, signs in
 - `POST /api/auth/login` `{phone,password}` → `{user,needsProfile}`
@@ -55,6 +67,8 @@ Passwords are bcrypt cost12 and limited to 8–72 UTF-8 bytes to avoid truncatio
 The static frontend is served with SPA fallback from `dist`; `/api` never falls back to HTML. TLS should terminate at a trusted reverse proxy and preserve same-origin behavior. In real mode configure HTTPS, backup the PostgreSQL database, restrict its network access, and grant the application DB account only the event database. No old admin, payments, invoices, tutoring, evening sessions or check-in are included.
 
 Backend integration tests automatically start a temporary local PostgreSQL unless `TEST_DATABASE_URL` points to a disposable PostgreSQL database. Tests create and drop a uniquely named schema only inside that explicitly supplied test database. There are no real provider tests.
+
+The v2 regression covers unconfirmed capacity/windows refusing final applications while auth, profile, draft and file preparation remain available; per-module readiness; malformed/date-only/backwards windows; same-event regeneration preserving rows and files; and review grants/corrections with unknown capacity. All previous complete-fact business mechanics and unknown-owner PostgreSQL guards remain tested. The baseline test fixture supplies explicit opening/closing windows, rather than relying on an omitted window being treated as unrestricted.
 
 Optional repository-level lifecycle regression, after the documented project venv setup and npm install in one generated instance:
 

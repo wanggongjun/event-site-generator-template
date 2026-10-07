@@ -15,6 +15,7 @@
     "start": "node backend/start.js",
     "demo": "node backend/start.js",
     "test": "npm run test --workspace backend",
-    "preview:offline": "npm run preview:offline --workspace frontend && node tools/render-preview.mjs ."
+    "preview:offline": "npm run preview:offline --workspace frontend && node tools/render-preview.mjs .",
+    "test:frontend": "npm run test:state --workspace frontend"
   }
 }

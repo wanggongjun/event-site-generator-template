@@ -24,7 +24,7 @@ from zipfile import ZipFile, ZIP_DEFLATED
 import openpyxl
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = '1.0.0'
+VERSION = '2.0.0'
 MAX_WORKBOOK_BYTES = 10 * 1024 * 1024
 MAX_ASSET_BYTES = 20 * 1024 * 1024
 SAFE_ASSET_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.webp', '.pdf', '.docx', '.pptx'}
@@ -32,19 +32,24 @@ FORBIDDEN_SEGMENTS = {'.git', 'node_modules', 'vendor', 'data', 'uploads', '__py
 SECRET_KEY = re.compile(r'(password|passwd|secret|token|credential|api.?key|private.?key|authorization|database.?url|smtp|webhook|feishu|oauth)', re.I)
 EVENT_FIELDS = {
  'event.slug': ('str', True), 'event.title': ('str', True), 'event.shortTitle': ('str', True),
- 'event.subtitle': ('str', False), 'event.startAt': ('datetime', True), 'event.endAt': ('datetime', True),
- 'event.timezone': ('str', True), 'event.location': ('str', True), 'event.capacity': ('positive-int', True),
+ 'event.subtitle': ('str', False), 'event.startDate': ('date', False), 'event.endDate': ('date', False),
+ 'event.startAt': ('datetime', False), 'event.endAt': ('datetime', False),
+ 'event.timezone': ('str', True), 'event.location': ('str', True), 'event.capacity': ('positive-int', False),
  'event.language': ('str', False), 'event.siteUrl': ('url', False), 'event.recordingsEnabled': ('bool', False),
- 'attendance.openAt': ('datetime', True), 'attendance.closeAt': ('datetime', True),
- 'submission.openAt': ('datetime', True), 'submission.closeAt': ('datetime', True), 'submission.supplementCloseAt': ('datetime', False),
- 'branding.primaryColor': ('color', False), 'branding.heroImage': ('asset', False), 'branding.logo': ('asset', False),
- 'home.target': ('str', True), 'travel.address': ('str', True), 'travel.mapUrl': ('url', False),
+ 'attendance.openAt': ('datetime', False), 'attendance.closeAt': ('datetime', False),
+ 'submission.openAt': ('datetime', False), 'submission.closeAt': ('datetime', False), 'submission.supplementCloseAt': ('datetime', False),
+ 'branding.primaryColor': ('color', False), 'branding.seriesText': ('str', False), 'branding.bannerTitle': ('str', False), 'branding.heroImage': ('asset', False), 'branding.logo': ('asset', False),
+ 'home.target': ('str', False), 'travel.address': ('str', True), 'travel.mapUrl': ('url', False),
 }
 COLLECTIONS = {
  'intro': (['text'], ['text']),
+ 'brandmarks': (['label', 'asset'], ['label', 'asset']),
  'features': (['title', 'description'], ['title', 'description']),
  'organizers': (['role', 'name'], ['role', 'name']),
- 'agenda': (['date', 'time', 'title', 'speaker', 'location'], ['date', 'time', 'title', 'location']),
+ 'agenda': (['date', 'time', 'title', 'speaker', 'chair', 'location', 'timeGroup', 'topicGroup', 'speakerGroup', 'chairGroup', 'locationGroup'], ['date', 'title']),
+ 'notices': (['title', 'body'], ['title', 'body']),
+ 'mealGuide': (['title', 'body'], ['title', 'body']),
+ 'sourceNotes': (['title', 'body'], ['title', 'body']),
  'directions': (['title', 'body'], ['title', 'body']),
  'hotels': (['name', 'address', 'description', 'url'], ['name', 'address', 'description']),
  'contacts': (['name', 'responsibility', 'email', 'phone', 'note'], ['name', 'responsibility']),
@@ -133,6 +138,27 @@ def parse_datetime(value, label, zone):
             fail(f'{label}: UTC 偏移与 event.timezone 不一致')
         dt = dt.astimezone(zone)
     return dt.isoformat(timespec='seconds')
+
+def parse_date(value, label):
+    if isinstance(value, datetime):
+        if value.time() != time(0):
+            fail(f'{label}: 日期字段不接受带具体时刻的值，请另填 startAt/endAt')
+        value = value.date()
+    try:
+        return date.fromisoformat(plain(value, label)).isoformat()
+    except ValueError:
+        fail(f'{label}: 需要 YYYY-MM-DD 日期')
+
+def readiness(config):
+    """Configuration readiness is independent of the current clock and sign-in."""
+    unresolved = []
+    for group, field in [('event', 'capacity'), ('attendance', 'openAt'), ('attendance', 'closeAt'), ('submission', 'openAt'), ('submission', 'closeAt')]:
+        if config[group].get(field) is None:
+            unresolved.append({'key': f'{group}.{field}', 'reason': '未提供会务事实，需主办方确认'})
+    capacity = config['event'].get('capacity') is not None
+    enabled = lambda group: capacity and all(config[group].get(field) is not None for field in ('openAt', 'closeAt'))
+    return {'mode': 'preview' if unresolved else 'ready', 'unresolved': unresolved,
+            'attendanceEnabled': enabled('attendance'), 'submissionEnabled': enabled('submission')}
 
 def safe_asset(workbook_dir, value, label):
     v = plain(value, label)
@@ -247,6 +273,8 @@ def load_config(workbook_path):
             continue
         if kind == 'datetime':
             val = parse_datetime(val, key, zone)
+        elif kind == 'date':
+            val = parse_date(val, key)
         elif kind == 'positive-int':
             val = positive_int(val, key)
         elif kind == 'bool':
@@ -254,6 +282,8 @@ def load_config(workbook_path):
         elif kind == 'url':
             val = safe_url(val, key)
         elif kind == 'asset':
+            if Path(str(val)).suffix.lower() not in ('.png','.jpg','.jpeg','.webp'):
+                fail(f'{key}: 品牌素材需要 png/jpg/jpeg/webp 图片')
             val, data = safe_asset(path.parent, val, key)
             assets[val.removeprefix('/')] = data
         else:
@@ -268,22 +298,41 @@ def load_config(workbook_path):
     e.setdefault('subtitle', '')
     e.setdefault('language', 'zh-CN')
     if e['language'] != 'zh-CN':
-        fail('event.language: v1 仅支持 zh-CN 中文界面')
+        fail('event.language: 当前仅支持 zh-CN 中文界面')
     e.setdefault('siteUrl', '')
     e.setdefault('recordingsEnabled', False)
     config['branding'].setdefault('primaryColor', '#5b9bd5')
     config['branding'].setdefault('heroImage', '/assets/hero.svg')
-    start, end = (datetime.fromisoformat(e[k]) for k in ('startAt', 'endAt'))
-    if start >= end:
+    for field in ('startAt', 'endAt', 'capacity'):
+        e.setdefault(field, None)
+    for precise, day in [('startAt', 'startDate'), ('endAt', 'endDate')]:
+        if e.get(precise):
+            derived = datetime.fromisoformat(e[precise]).date().isoformat()
+            if e.get(day) and e[day] != derived:
+                fail(f'event: {day} 与 {precise} 日期不一致')
+            e[day] = derived
+        elif not e.get(day):
+            fail(f'event: 需要 {day} 或含具体时刻的 {precise}')
+    start_date, end_date = (date.fromisoformat(e[k]) for k in ('startDate', 'endDate'))
+    if start_date > end_date:
+        fail('event: startDate 不可晚于 endDate')
+    if e['startAt'] and e['endAt'] and datetime.fromisoformat(e['startAt']) >= datetime.fromisoformat(e['endAt']):
         fail('event: startAt 必须早于 endAt')
     for group in ('attendance', 'submission'):
-        opened, closed = (datetime.fromisoformat(config[group][k]) for k in ('openAt', 'closeAt'))
-        if opened >= closed:
-            fail(f'{group}: 需要 openAt < closeAt')
+        for field in ('openAt', 'closeAt'):
+            config[group].setdefault(field, None)
+        if config[group]['openAt'] and config[group]['closeAt']:
+            opened, closed = (datetime.fromisoformat(config[group][k]) for k in ('openAt', 'closeAt'))
+            if opened >= closed:
+                fail(f'{group}: 需要 openAt < closeAt')
     config['submission'].setdefault('supplementCloseAt', config['submission']['closeAt'])
-    supplement = datetime.fromisoformat(config['submission']['supplementCloseAt'])
-    if supplement < datetime.fromisoformat(config['submission']['closeAt']):
-        fail('submission: 需要 closeAt <= supplementCloseAt')
+    if config['submission']['supplementCloseAt']:
+        if not config['submission']['closeAt']:
+            fail('submission: 填写 supplementCloseAt 时必须提供 closeAt')
+        if datetime.fromisoformat(config['submission']['supplementCloseAt']) < datetime.fromisoformat(config['submission']['closeAt']):
+            fail('submission: 需要 closeAt <= supplementCloseAt')
+    config['home'].setdefault('target', '')
+    config['readiness'] = readiness(config)
     defaults = dict(DEFAULTS)
     if 'defaults' in wb.sheetnames:
         seen = set()
@@ -315,6 +364,14 @@ def load_config(workbook_path):
     for name, (columns, required_columns) in COLLECTIONS.items():
         result, identities = [], set()
         if name in wb.sheetnames:
+            if name == 'agenda':
+                header = [c.value for c in wb[name][1]]
+                while header and header[-1] is None:
+                    header.pop()
+                if header == ['date', 'time', 'title', 'speaker', 'location']:
+                    columns = header  # v1 workbooks remain valid without invented chair data.
+                elif header == ['date', 'time', 'title', 'speaker', 'chair', 'location']:
+                    columns = header
             for row, record in read_rows(wb[name], columns):
                 item = {}
                 for field in columns:
@@ -324,6 +381,8 @@ def load_config(workbook_path):
                     if field == 'url':
                         v = safe_url(v, f'{name}!{field}{row}')
                     elif field == 'asset':
+                        if name == 'brandmarks' and Path(v).suffix.lower() not in ('.png','.jpg','.jpeg','.webp'):
+                            fail(f'brandmarks!{row}: 品牌标识需要图片素材')
                         v, data = safe_asset(path.parent, v, f'{name}!{field}{row}')
                         if v in ('/assets/hero.svg',):
                             fail('素材路径与生成文件冲突')
@@ -337,20 +396,25 @@ def load_config(workbook_path):
                     if item.get('email') and not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', item['email']):
                         fail(f'contacts!{row}: email 格式无效')
                 if name == 'agenda':
-                    try:
-                        item['date'] = date.fromisoformat(item['date']).isoformat()
-                        if not re.fullmatch(r'\d{2}:\d{2}(?:-\d{2}:\d{2})?', item['time']):
-                            raise ValueError()
-                        times = item['time'].split('-')
-                        for t in times:
-                            time.fromisoformat(t)
-                        if len(times) == 2 and times[0] >= times[1]:
-                            raise ValueError()
-                    except ValueError:
-                        fail(f'agenda!{row}: date 需要 YYYY-MM-DD，time 需要 HH:MM 或 HH:MM-HH:MM 且有序')
-                    if not start.date() <= date.fromisoformat(item['date']) <= end.date():
+                    item['date'] = parse_date(record['date'], f'agenda!date{row}')
+                    item.setdefault('time', '时间待通知')
+                    item.setdefault('location', '地点待通知')
+                    item.setdefault('speaker', '')
+                    item.setdefault('chair', '')
+                    if item['time'] not in ('全天', '时间待通知'):
+                        try:
+                            if not re.fullmatch(r'\d{2}:\d{2}(?:-\d{2}:\d{2})?', item['time']):
+                                raise ValueError()
+                            times = item['time'].split('-')
+                            for t in times:
+                                time.fromisoformat(t)
+                            if len(times) == 2 and times[0] >= times[1]:
+                                raise ValueError()
+                        except ValueError:
+                            fail(f'agenda!{row}: time 需要 全天、时间待通知、HH:MM 或有序 HH:MM-HH:MM')
+                    if not start_date <= date.fromisoformat(item['date']) <= end_date:
                         fail(f'agenda!{row}: 日程日期超出活动日期')
-                    identity = (item['date'], item['time'], item['location'])
+                    identity = (item['date'], item['time'], item['location'], item['title'])
                 elif name == 'organizers':
                     identity = (item['role'], item['name'])
                 elif name == 'contacts':
@@ -369,22 +433,46 @@ def load_config(workbook_path):
             config['travel']['directions'] = result
         else:
             config[name] = result
+    # Group IDs preserve source merged cells; they must never hide a different
+    # fact or join non-adjacent rows in the same date/location block.
+    for field, metadata in [('time','timeGroup'),('title','topicGroup'),('speaker','speakerGroup'),('chair','chairGroup'),('location','locationGroup')]:
+        groups = {}
+        for index, item in enumerate(config['agenda']):
+            identity = item.get(metadata)
+            if not identity:
+                continue
+            key = (item['date'], identity)
+            if key in groups:
+                previous_value, previous_index = groups[key]
+                if previous_value != item.get(field, '') or previous_index != index-1:
+                    fail(f'agenda: {metadata} 必须表示同日相邻且内容一致的 {field}')
+            groups[key] = (item.get(field, ''), index)
+    if len(config.get('brandmarks', [])) > 5:
+        fail('brandmarks: 固定横幅品牌区最多接收五个标识')
     if not e['recordingsEnabled']:
         config['recordings'] = []
     if not config['home']['intro'] or not config['agenda'] or not config['contacts'] or not config['faqs']:
         fail('intro、agenda、contacts、faqs 各至少需要一条记录')
+    from text_refs import resolve_content_refs
+    from hero_binding import apply_hero_binding
+    try:
+        resolve_content_refs(config)
+    except ValueError as exc:
+        fail(str(exc))
+    apply_hero_binding(config, assets, path)
     config['source'] = {'schemaVersion': VERSION, 'workbookSha256': digest(raw)}
     wb.close()
     return config, assets
 
 def event_facts(config):
     e = config['event']
-    start, end = (datetime.fromisoformat(e[k]) for k in ('startAt', 'endAt'))
-    date_text = f'{start:%Y年%m月%d日}' if start.date() == end.date() else f'{start:%Y年%m月%d日}至{end:%Y年%m月%d日}'
-    return {'title': e['title'], 'subtitle': e['subtitle'], 'dates': date_text,
-            'location': e['location'], 'capacity': str(e['capacity']), 'siteUrl': e['siteUrl'],
-            'attendanceClose': datetime.fromisoformat(config['attendance']['closeAt']).strftime('%Y年%m月%d日 %H:%M'),
-            'submissionClose': datetime.fromisoformat(config['submission']['closeAt']).strftime('%Y年%m月%d日 %H:%M')}
+    start, end = (date.fromisoformat(e[k]) for k in ('startDate', 'endDate'))
+    date_text = f'{start:%Y年%m月%d日}' if start == end else f'{start:%Y年%m月%d日}至{end:%Y年%m月%d日}'
+    close_text = lambda group: datetime.fromisoformat(config[group]['closeAt']).strftime('%Y年%m月%d日 %H:%M') if config[group].get('closeAt') else None
+    return {'title': e['title'], 'subtitle': e.get('subtitle', ''), 'dates': date_text,
+            'location': e['location'], 'capacity': str(e['capacity']) if e.get('capacity') else None,
+            'siteUrl': e.get('siteUrl', ''), 'attendanceClose': close_text('attendance'),
+            'submissionClose': close_text('submission')}
 
 def svg_text(value):
     return html.escape(str(value), quote=True)
@@ -392,124 +480,13 @@ def svg_text(value):
 def text_width(text):
     return sum(1.0 if ord(c) > 255 else 0.57 for c in text)
 
-def hero_svg(config):
-    f = event_facts(config)
-    size = min(116, 1740 / max(1, text_width(f['title'])))
-    subtitle_size = min(28, 1740 / max(1, text_width(f['subtitle'])))
-    footer = f['dates']+'  ·  '+f['location']
-    footer_size = min(29, 1740 / max(1, text_width(footer)))
-    arcs = ''.join(f'<path d="M {1024-r} 550 Q 1024 {-r*0.40} {1024+r} 550" fill="none" stroke="#41a6ff" stroke-opacity="0.12"/>' for r in range(400, 1500, 80))
-    dots = ''.join(f'<circle cx="{x}" cy="{y}" r="1.5" fill="#49b2ff" opacity="{0.08 + ((x+y)%7)*0.013:.3f}"/>' for x in range(450, 1610, 18) for y in range(30, 220, 18))
-    waves = ''.join(f'<path d="M -20 {420+i*2} C 340 {250+i*3}, 700 {620-i*2}, 1024 450 S 1650 {250+i*3}, 2070 {420+i*2}" fill="none" stroke="#33c4ff" stroke-opacity="{0.08 + i*0.007:.3f}" stroke-width="1"/>' for i in range(24))
-    return f'''<svg xmlns="http://www.w3.org/2000/svg" width="2048" height="512" viewBox="0 0 2048 512" role="img" aria-labelledby="title desc">
-<title id="title">{svg_text(f['title'])}</title><desc id="desc">{svg_text(f['dates']+'，'+f['location'])}</desc>
-<defs><radialGradient id="bg"><stop stop-color="#0843b9"/><stop offset="1" stop-color="#07156e"/></radialGradient><radialGradient id="flare"><stop stop-color="#a7edff"/><stop offset="1" stop-color="#3cbcff" stop-opacity="0"/></radialGradient></defs>
-<rect width="2048" height="512" fill="url(#bg)"/>{arcs}{dots}{waves}
-<path d="M 1024 453 C 670 245 252 342 462 441 C 650 546 880 500 1024 453 C 1378 245 1796 342 1586 441 C 1398 546 1168 500 1024 453" fill="none" stroke="#56d5ff" stroke-opacity="0.6" stroke-width="4"/>
-<ellipse cx="1024" cy="453" rx="96" ry="44" fill="url(#flare)"/>
-<g fill="white" font-family="Noto Sans CJK SC,Microsoft YaHei,sans-serif" text-anchor="middle"><text x="1024" y="240" font-size="{size:.1f}" font-weight="700">{svg_text(f['title'])}</text><text x="1024" y="305" font-size="{subtitle_size:.1f}" opacity="0.9">{svg_text(f['subtitle'])}</text><text x="1024" y="361" font-size="{footer_size:.1f}" font-weight="600">{svg_text(footer)}</text></g></svg>'''
+def hero_svg(config, assets=None):
+    from hero import hero_svg as branded_hero_svg
+    return branded_hero_svg(config, assets)
 
-def poster_svg(config):
-    f = event_facts(config)
-    title_size = min(78, 900/max(1,text_width(f['title'])))
-    lines = [f['dates'], f['location'], '参会报名截止：'+f['attendanceClose'], '学术投稿截止：'+f['submissionClose'], '参会规模：'+f['capacity']+' 人', f['siteUrl'] or '请通过会议网站完成报名与投稿']
-    body = ''.join(f'<text x="90" y="{520+i*70}" font-size="{min(31,900/max(1,text_width(line))):.1f}">{svg_text(line)}</text>' for i,line in enumerate(lines))
-    return f'''<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1440" viewBox="0 0 1080 1440"><title>{svg_text(f['title'])}</title><defs><linearGradient id="p" x2="1" y2="1"><stop stop-color="#071b72"/><stop offset="1" stop-color="#095ddd"/></linearGradient></defs><rect width="1080" height="1440" fill="url(#p)"/><g fill="none" stroke="#58c9ff" stroke-opacity="0.2">{''.join(f'<circle cx="1050" cy="180" r="{r}"/>' for r in range(160,1000,65))}</g><rect x="70" y="400" width="940" height="620" rx="30" fill="#031a66" fill-opacity="0.45"/><g fill="white" font-family="Noto Sans CJK SC,Microsoft YaHei,sans-serif"><text x="90" y="190" font-size="22" letter-spacing="3">CONFERENCE · 会议邀请</text><text x="90" y="300" font-size="{title_size:.1f}" font-weight="700">{svg_text(f['title'])}</text><text x="90" y="360" font-size="{min(30,900/max(1,text_width(f['subtitle']))):.1f}">{svg_text(f['subtitle'])}</text>{body}<text x="90" y="1140" font-size="32" font-weight="700">共同探索 · 开放交流</text><text x="90" y="1200" font-size="25">{svg_text(config['home']['target'][:34])}</text><text x="90" y="1320" font-size="22" opacity="0.75">时间均以 {svg_text(config['event']['timezone'])} 为准</text></g></svg>'''
-
-def poster_png(config, path):
-    from PIL import Image, ImageDraw, ImageFont
-    fonts = [Path('/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc'), Path('/System/Library/Fonts/PingFang.ttc'), Path('C:/Windows/Fonts/msyh.ttc')]
-    font_path = next((str(p) for p in fonts if p.is_file()), None)
-    if not font_path:
-        # SVG and DOCX remain fully editable; PNG creation needs a Unicode font.
-        return False
-    im = Image.new('RGB', (1080,1440)); draw = ImageDraw.Draw(im)
-    for y in range(1440):
-        p=y/1439
-        draw.line((0,y,1080,y),fill=(int(7+2*p),int(27+66*p),int(114+107*p)))
-    for r in range(160,1000,65):
-        draw.ellipse((1050-r,180-r,1050+r,180+r),outline=(28,94,177),width=1)
-    draw.rounded_rectangle((70,400,1010,1020),radius=30,fill=(5,37,119))
-    f=event_facts(config)
-    def write(text,y,size):
-        font=ImageFont.truetype(font_path,size)
-        while draw.textbbox((0,0),text,font=font)[2]>900 and size>10:
-            size-=1; font=ImageFont.truetype(font_path,size)
-        draw.text((90,y),text,font=font,fill='white',anchor='lt')
-    write('CONFERENCE · 会议邀请',155,22);write(f['title'],240,78);write(f['subtitle'],325,30)
-    for i,line in enumerate([f['dates'],f['location'],'参会报名截止：'+f['attendanceClose'],'学术投稿截止：'+f['submissionClose'],'参会规模：'+f['capacity']+' 人',f['siteUrl'] or '请通过会议网站完成报名与投稿']):
-        write(line,485+i*70,31)
-    write('共同探索 · 开放交流',1100,32);write(config['home']['target'][:34],1160,25);write('时间均以 '+config['event']['timezone']+' 为准',1280,22)
-    im.save(path,compress_level=9)
-    return True
-
-def resource_destination(config, item):
-    """Standalone material links derive from the canonical website + public path."""
-    if item.get('url'):
-        return item['url']
-    asset = item.get('asset', '')
-    site_url = config['event'].get('siteUrl', '')
-    if site_url:
-        return site_url.rstrip('/') + quote(asset, safe='/')
-    return asset + '（本地演示路径；需先启动网站，不能作为独立公开链接）'
-
-def guide_sections(config):
-    f=event_facts(config)
-    return [
-     ('会议概览',[f['dates']+' · '+f['location'],config['travel']['address'],'参会规模：'+f['capacity']+' 人','时区：'+config['event']['timezone'],*config['home']['intro'],'适合参加：'+config['home']['target']]),
-     ('报名与投稿',['参会报名截止：'+f['attendanceClose'],'学术投稿截止：'+f['submissionClose'],'补充材料截止：'+datetime.fromisoformat(config['submission']['supplementCloseAt']).strftime('%Y年%m月%d日 %H:%M'),'报名与投稿是两项独立流程；先完成个人信息后，可以分别提交。','每人一份投稿；最多 '+str(config['files']['maxAttachments'])+' 个附件，单个不超过 '+str(config['files']['maxFileBytes']//1048576)+'MB，支持 '+'/'.join(config['files']['allowedExtensions']).upper()+'。',f['siteUrl'] or '会议网站地址待主办方发布']),
-     ('会议日程',[item['date']+' '+item['time']+' | '+item['title']+' | '+item.get('speaker','')+' | '+item['location'] for item in config['agenda']]),
-     ('交通与住宿',[config['travel']['address'],*[item['title']+'：'+item['body'] for item in config['travel']['directions']],*[item['name']+'：'+item['address']+'。'+item['description']+((' '+item['url']) if item.get('url') else '') for item in config['hotels']]]),
-     ('联系与常见问题',[*[item['name']+'（'+item['responsibility']+'）：'+' / '.join(item.get(k,'') for k in ('email','phone') if item.get(k))+(('。'+item['note']) if item.get('note') else '') for item in config['contacts']],*[item['question']+'\n'+item['answer'] for item in config['faqs']]]),
-     ('资料下载',[item['title']+'：'+item['description']+' '+resource_destination(config,item) for item in config['resources']]),
-    ] + ([('会议回放',[item['title']+'：'+item['description']+' '+item['url'] for item in config['recordings']])] if config['event']['recordingsEnabled'] else [])
-
-def deterministic_docx(path, config):
-    from docx import Document
-    from docx.shared import Inches, Pt, RGBColor
-    from docx.oxml import OxmlElement
-    from docx.oxml.ns import qn
-    doc=Document(); section=doc.sections[0]
-    section.page_width=Inches(8.27);section.page_height=Inches(11.69)
-    section.top_margin=section.bottom_margin=Inches(.7);section.left_margin=section.right_margin=Inches(.8)
-    for name in ('Normal','Title','Heading 1'):
-        style=doc.styles[name]
-        for border in list(style._element.iter(qn('w:pBdr'))):
-            border.getparent().remove(border)
-        style.font.name='Noto Sans CJK SC';style._element.get_or_add_rPr().rFonts.set(qn('w:eastAsia'),'Noto Sans CJK SC')
-    doc.styles['Normal'].font.size=Pt(10.5)
-    doc.styles['Normal'].paragraph_format.space_after=Pt(7)
-    doc.styles['Normal'].paragraph_format.line_spacing=1.2
-    doc.styles['Title'].font.size=Pt(26);doc.styles['Title'].font.color.rgb=RGBColor.from_string('1459D9')
-    doc.styles['Heading 1'].font.size=Pt(15);doc.styles['Heading 1'].font.color.rgb=RGBColor.from_string('1459D9')
-    doc.add_heading(config['event']['title'],0);doc.add_paragraph(config['event']['subtitle']);doc.add_paragraph('会议指南')
-    for title,lines in guide_sections(config):
-        if lines:
-            if title in ('会议日程', '联系与常见问题'):
-                doc.add_page_break()
-            doc.add_heading(title,1)
-            for line in lines:
-                doc.add_paragraph(line)
-    props=doc.core_properties;props.title=config['event']['title']+'会议指南';props.author='';props.last_modified_by='';props.created=props.modified=datetime(2000,1,1)
-    stream=io.BytesIO();doc.save(stream)
-    with ZipFile(stream) as src, ZipFile(path,'w',ZIP_DEFLATED,compresslevel=9) as out:
-        for name in sorted(src.namelist()):
-            from zipfile import ZipInfo
-            info=ZipInfo(name,date_time=(2000,1,1,0,0,0));info.compress_type=ZIP_DEFLATED;info.external_attr=0o600<<16
-            out.writestr(info,src.read(name))
-
-def write_materials(stage,config):
-    folder=stage/'materials';folder.mkdir(parents=True,exist_ok=True)
-    (folder/'poster.svg').write_text(poster_svg(config),encoding='utf-8')
-    png=poster_png(config,folder/'poster.png')
-    deterministic_docx(folder/'conference-guide.docx',config)
-    sections=''.join('<section><h2>'+html.escape(title)+'</h2>'+''.join('<p>'+html.escape(line).replace('\n','<br>')+'</p>' for line in lines)+'</section>' for title,lines in guide_sections(config) if lines)
-    body='<!doctype html><html lang="'+config['event']['language']+'"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+html.escape(config['event']['title'])+'会议指南</title><style>body{max-width:800px;margin:48px auto;padding:0 24px;color:#193254;font:16px/1.8 system-ui,sans-serif}h1,h2{color:#1459d9}h1{line-height:1.3}section{break-inside:avoid}p{overflow-wrap:anywhere}@media print{body{margin:0}} </style><h1>'+html.escape(config['event']['title'])+'</h1><p>'+html.escape(config['event']['subtitle'])+'</p>'+sections+'</html>'
-    (folder/'conference-guide.html').write_text(body,encoding='utf-8')
-    f=event_facts(config)
-    posts=f"""长版邀请\n{f['title']}\n{f['subtitle']}\n时间：{f['dates']}\n地点：{f['location']}\n{config['home']['intro'][0]}\n适合参加：{config['home']['target']}\n参会报名截止：{f['attendanceClose']}\n学术投稿截止：{f['submissionClose']}\n报名与投稿分别进行。参会规模：{f['capacity']} 人。\n会议网站：{f['siteUrl'] or '待发布'}\n所有时间以 {config['event']['timezone']} 为准。\n\n简版邀请\n{f['title']}将于{f['dates']}在{f['location']}举行。报名截止{f['attendanceClose']}；投稿截止{f['submissionClose']}。详情：{f['siteUrl'] or '待发布'}\n"""
-    (folder/'social-posts.txt').write_text(posts,encoding='utf-8')
-    return png
+# Material functions live separately to keep source-aware pagination independent
+# from validation and safe file-overlay mechanics. Public imports remain stable.
+from materials import poster_svg, poster_png, guide_sections, deterministic_docx, write_materials, resource_destination
 
 def template_files(template):
     if not template.is_dir():
@@ -572,10 +549,11 @@ def generate(workbook_path, output=None, template=None):
         config_bytes=(json.dumps(config,ensure_ascii=False,indent=2,sort_keys=True)+'\n').encode('utf-8')
         for rel in ('config.json','frontend/public/config.json','frontend/src/config.generated.json'):
             p=stage/rel;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(config_bytes)
-        assets['assets/hero.svg']=hero_svg(config).encode('utf-8')
+        assets['assets/hero.svg']=hero_svg(config,assets).encode('utf-8')
         for rel,data in assets.items():
             p=stage/'frontend/public'/rel;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(data)
-        png=write_materials(stage,config)
+        hero_path=stage/'frontend/public'/config['branding']['heroImage'].removeprefix('/')
+        png=write_materials(stage,config,hero_path=hero_path)
         artifact_paths=[p.relative_to(stage).as_posix() for p in sorted(stage.rglob('*')) if p.is_file()]
         # Existing arbitrary user files must not be overwritten accidentally.
         previous_artifacts=set(old.get('artifacts',[])) if old else set()
@@ -591,7 +569,8 @@ def generate(workbook_path, output=None, template=None):
                   'workbookSha256':config['source']['workbookSha256'],
                   'configSha256':digest(config_bytes),'templateSha256':digest(b''.join(str(r).encode()+b'\0'+d for r,d in files)),
                   'artifacts':artifact_paths,'sha256':{rel:digest((stage/rel).read_bytes()) for rel in artifact_paths},
-                  'warnings':[] if png else ['PNG 未生成：系统缺少中文字体；可编辑 SVG 已生成。']}
+                  'readiness':config['readiness'],
+                  'warnings':([config['branding']['heroWarning']] if config['branding'].get('heroWarning') else []) + ([('会务预览：缺少 ' + '、'.join(item['key'] for item in config['readiness']['unresolved']))] if config['readiness']['mode']=='preview' else []) + ([] if png else ['PNG 未生成：系统缺少中文字体或 SVG 栅格化工具；可编辑 SVG 已生成。'])}
         (stage/'manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2,sort_keys=True)+'\n',encoding='utf-8')
         target.mkdir(parents=True,exist_ok=True)
         # Overlay only generator-owned files. No delete/rmtree occurs in target.
@@ -619,6 +598,7 @@ def main(argv=None):
         if args.validate_only:
             config,assets=load_config(args.workbook)
             print(f"配置有效：{config['event']['slug']}，{len(config['agenda'])} 条日程，{len(assets)} 个公共素材")
+            if config['branding'].get('heroWarning'):print('提示：'+config['branding']['heroWarning'])
         else:
             path,manifest=generate(args.workbook,args.output,args.template)
             print(f'已生成：{path}')

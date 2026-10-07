@@ -1,183 +1,178 @@
-# 单一 XLSX 配置契约（v1.0.0）
+# 单一 XLSX 配置契约 v2.0.0
 
-这份说明足够让另一位 LLM 在不查看原始会议代码、不使用任何旧活动内容的情况下，为一场新会议制作输入并生成可运行的网站。
+每场活动只有一个可编辑事实源：event.xlsx，以及同目录中由它引用的公共素材。工作簿不存凭据、管理员账号、数据库连接、短信或飞书密钥。报名、投稿、附件和审核记录留在独立 PostgreSQL 与鉴权文件存储中，生成器不会连接或改写业务数据库。生成后的 JSON 是派生文件，不能替代 XLSX 作为下次输入。
 
-## 1. 唯一事实源与第一条命令
+## 生成和验证
 
-每场会议只有一个可编辑配置源：一个 `.xlsx` 工作簿，外加与它同目录下的公共图片/下载素材。工作簿不存数据库连接、管理员账号、短信密钥、OAuth、邮件凭据或任何密码。运行时个人资料、报名、投稿、审核记录属于独立业务数据库，不回写工作簿，也不从 UI、飞书或代码反向同步配置。
-
-从包根目录执行：
-
-先在本模板包目录建立项目专用虚拟环境，不向系统Python或用户目录安装。
-
-Linux / macOS：
+在模板根目录建立项目专用环境：
 
 ```sh
 python3 -m venv .venv
 .venv/bin/python -m pip install --cache-dir .cache/pip -r requirements.txt
+.venv/bin/python scripts/validate_config.py /path/to/event.xlsx
+.venv/bin/python scripts/generate.py /path/to/event.xlsx
 ```
 
-Windows PowerShell（不需要修改执行策略或激活脚本）：
+Windows 用 py -3 -m venv .venv，之后把 .venv/bin/python 换成 .\.venv\Scripts\python.exe。不需激活脚本或改执行策略。
 
-```powershell
-py -3 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install --cache-dir .cache/pip -r requirements.txt
-```
-
-以下Python命令展示Linux/macOS路径；Windows将`.venv/bin/python`替换为`.\.venv\Scripts\python.exe`。所有生成/测试均使用这个项目环境。
+虚构的完整运营配置示例仍在 input/fictional-conference.xlsx；原文档输入由消费者按契约自行建立；缺失运营事实时生成会务预览。活动过去或窗口关闭与“事实是否齐全”是两回事，运行时仍检查当前时间。
 
 ```sh
-.venv/bin/python scripts/validate_config.py input/fictional-conference.xlsx
-.venv/bin/python scripts/generate.py input/fictional-conference.xlsx
-cd generated/aurora-research-forum-2027
+.venv/bin/python scripts/create_sample.py input/my-event
+# 修改 input/my-event/event.xlsx 中的 slug、所有活动事实和素材
+.venv/bin/python scripts/generate.py input/my-event/event.xlsx --output generated/my-event
+cd generated/my-event
 npm install
 npm run build
 npm start
 ```
 
-为新会议复制唯一输入，再修改它：
+不同活动或不同届次必须使用独立 slug、输出目录和业务数据库。脚本不会部署、发送通知、创建外部账号或写入 GitHub。
 
-```sh
-.venv/bin/python scripts/create_sample.py input/my-new-event
-# 编辑 input/my-new-event/event.xlsx；务必修改 event.slug 和所有虚构示例内容。
-.venv/bin/python scripts/validate_config.py input/my-new-event/event.xlsx
-.venv/bin/python scripts/generate.py input/my-new-event/event.xlsx
-```
+## 工作簿通用规则
 
-可以用 `--output /path/to/independent-output` 指定目录。每场会议必须独立输出，使用独立账号与数据库/存储目录。即使活动名称相同，新的举办届次也应使用新 slug。脚本不会部署网站、创建线上账户或写入 GitHub。
+工作表和字段键区分大小写，第 1 行使用下面的精确表头，不能加封面行、合并表头、未定义列、额外表、公式、错误值或宏。完全空行忽略。集合条目保持输入顺序。每个 key 只出现一次。日期时间写最终值。
 
-## 2. 工作簿的精确结构
+event 和 defaults 使用 key,value,description；description 是填表说明，不进入网站。未知事实留空，不填 1、1970 年、00:00 或猜测值。容量 1 如果确实是主办方提供的真实容量仍合法，生成器无法从一个合法数字判断它是否是占位符。
 
-工作表名使用下列英文原样拼写；字段键区分大小写。第 1 行必须是精确表头，不加封面行、不合并表头、不增加未定义列。数据从第 2 行开始；完全空行被忽略。不能有公式、Excel 错误值、宏或额外工作表。日期时间填最终值，不能靠公式计算。
+## event 字段
 
-`event` 是必需工作表，表头是 `key,value,description`。`description` 是给填表者的中文说明，不参与生成。每个 key 只可出现一次，留空的可选值使用缺省行为。main facts 只在这里填写一次，横幅、海报、指南和宣传文本从同一规范化事实派生。
-
-### event 字段
-
-| key | 必填 | 类型与约束 |
+| key | 必填 | 类型和含义 |
 |---|---|---|
-| event.slug | 是 | 1–64 位小写字母、数字和单个连字符，如 spring-forum-2027；不能以连字符开始/结束 |
-| event.title | 是 | 会议全称；任意新名称，无硬编码活动名 |
-| event.shortTitle | 是 | 导航栏短名称 |
-| event.subtitle | 否 | 副标题；默认空 |
-| event.startAt | 是 | ISO 日期时间，例如 2031-06-14T09:00:00 |
-| event.endAt | 是 | ISO 日期时间，晚于 startAt |
-| event.timezone | 是 | IANA 时区，如 Asia/Shanghai、Europe/Paris、Etc/UTC |
-| event.location | 是 | 会场名，网站、海报、指南共用 |
-| event.capacity | 是 | 正整数，人数容量 |
-| event.language | 否 | v1 仅接受 zh-CN；默认中文界面。内容文本按工作簿原文输出，不自动翻译 |
-| event.siteUrl | 否 | 完整 http/https 网站 URL；默认空 |
-| event.recordingsEnabled | 否 | true/false、Excel 布尔值、1/0 或 是/否；默认 false |
-| attendance.openAt | 是 | 参会报名开放时间 |
-| attendance.closeAt | 是 | 参会报名截止时间 |
-| submission.openAt | 是 | 学术投稿开放时间 |
-| submission.closeAt | 是 | 首次投稿截止时间 |
-| submission.supplementCloseAt | 否 | 已提交投稿的补充附件截止时间；空白沿用 submission.closeAt |
-| branding.primaryColor | 否 | #RRGGBB，默认 #5b9bd5；仅用于网页按钮/标题强调，不是统一海报主题色 |
-| branding.heroImage | 否 | 工作簿目录内本地公共图片相对路径；空白使用生成的 /assets/hero.svg |
-| branding.logo | 否 | 工作簿目录内本地公共图片相对路径；空白不显示 logo；用于网页横幅左上角 |
-| home.target | 是 | 面向人群 |
-| travel.address | 是 | 会场完整地址 |
-| travel.mapUrl | 否 | 完整 http/https 地图 URL |
+| event.slug | 是 | 1–64 位小写字母、数字和单连字符 |
+| event.title | 是 | 活动全称 |
+| event.shortTitle | 是 | 导航短名称，也可作为横幅短标题 |
+| event.subtitle | 否 | 副标题，默认空 |
+| event.startDate | 条件 | YYYY-MM-DD 或 Excel 日期；没有 startAt 时必填 |
+| event.endDate | 条件 | YYYY-MM-DD 或 Excel 日期；没有 endAt 时必填 |
+| event.startAt | 否 | 仅在原资料提供具体开始时刻时填写 ISO 日期时间 |
+| event.endAt | 否 | 仅在原资料提供具体结束时刻时填写 ISO 日期时间 |
+| event.timezone | 是 | IANA 时区，如 Asia/Shanghai |
+| event.location | 是 | 活动主会场名称 |
+| event.capacity | 否 | 真实正整数；未知留空，规范化为 null |
+| event.language | 否 | 当前界面仅 zh-CN，默认中文；内容不自动翻译 |
+| event.siteUrl | 否 | 无凭据的完整 http/https URL；未知留空 |
+| event.recordingsEnabled | 否 | true/false、布尔值、1/0 或 是/否；默认 false |
+| attendance.openAt | 否 | 真实参会报名开放时间；未知留空 |
+| attendance.closeAt | 否 | 真实参会报名截止时间；未知留空 |
+| submission.openAt | 否 | 真实首次投稿开放时间；未知留空 |
+| submission.closeAt | 否 | 真实首次投稿截止时间；未知留空 |
+| submission.supplementCloseAt | 否 | 已提交投稿的补附件截止；空白沿用已知 closeAt，closeAt 也未知则 null |
+| branding.primaryColor | 否 | #RRGGBB；默认 #5b9bd5，用于网页强调 |
+| branding.heroImage | 否 | 工作簿目录内公共图片相对路径；提供时网站和海报保留原图片字节 |
+| branding.logo | 否 | 工作簿目录内公共图片相对路径；默认生成横幅无brandmarks时作为首标识，空白不显示 |
+| branding.seriesText | 否 | 品牌横幅右上角系列活动文字；不推断 |
+| branding.bannerTitle | 否 | 横幅的短标题；空白使用 shortTitle |
+| home.target | 否 | 原资料明确提供的面向人群；未提供留空，不推断参训资格 |
+| travel.address | 是 | 完整会场地址 |
+| travel.mapUrl | 否 | 完整 http/https 地图链接 |
 
-时间可使用不含偏移的 ISO 本地日期时间或 Excel 真日期时间，统一按 event.timezone 解释，生成 JSON 补充正确 UTC 偏移。如显式填写 `2031-06-14T09:00:00+08:00`，偏移必须与该时区在当日一致。夏令时不存在的本地时间拒绝；夏令时重复时段需要明确偏移。单独的 YYYY-MM-DD 不是有效截止时间。
+startDate <= endDate。填了 startAt/endAt 时，在 event.timezone 中的日期必须与相应日期字段一致，缺省日期由它派生；若二者都含时刻，则 startAt < endAt。兼容 v1 完整日期时间输入，不要求额外录入日期。仅有日期不转换为午夜、日末或任意集合时间，JSON 的 startAt/endAt 保持 null。
 
-排序关系必须同时满足：
-- event.startAt < event.endAt
-- attendance.openAt < attendance.closeAt
-- submission.openAt < submission.closeAt
-- submission.closeAt <= submission.supplementCloseAt（如填写）
+日期时间允许本地 ISO 文本或 Excel 真日期时间，统一补充 event.timezone 的真实 UTC 偏移。显式偏移必须与时区一致。不存在的夏令时时刻拒绝，重复时段须提供明确偏移。运营截止时间不能仅填日期。
 
-报名、投稿和补充材料窗口由会务政策决定，可覆盖会议期间或会议结束后；不强制各截止时间早于活动开始/结束。补充截止留空时，生成配置沿用首次投稿截止，保持运行时字段完整。
+每个已知完整窗口必须 openAt < closeAt。补附件截止需要已知首次投稿截止，且 closeAt <= supplementCloseAt。报名、投稿和补材料可以覆盖活动期间或结束后，不强制截止早于会议开始。
 
-参会报名与学术投稿互相独立，不存在“报名即投稿”的配置开关。
+## 诚实预览与运营准备度
 
-### defaults：小范围构建期替代项
-
-可选工作表，表头同为 `key,value,description`，每个键至多一行。缺省值就是要求的 20MB、3 个附件、PDF/DOCX/PPTX、60 秒轮询。
-
-| key | 默认值 | 可接受值 |
-|---|---|---|
-| profileOptionalFields | department,job,personalIntroduction | 逗号分隔的三个字段子集；用于是否展示这三项可选资料字段 |
-| files.maxFileBytes | 20971520 | 正整数字节数，最多 20971520 |
-| files.maxAttachments | 3 | 1–3 |
-| files.allowedExtensions | pdf,docx,pptx | 这三个小写扩展名的非空子集；不带点 |
-| sync.pollSeconds | 60 | 5–3600 秒 |
-
-这不是通用表单引擎，不在工作簿内配置业务流程或任意新字段。运行时固定资料字段为：姓名、手机号（只读）、邮箱、单位、身份、研究方向；部门、职务、个人简介是可选项。在线投稿固定为：标题、摘要、关键词、作者与单位、报告人、附件、备注；每人一份投稿。
-
-### 集合工作表
-
-全部使用第 1 行精确表头。即使整张表没有条目，也保留表头。资源、住宿和回放可以没有行；intro、agenda、contacts、faqs 各至少一行。所有行按工作簿顺序输出。
-
-| 表名 | 精确表头（按此顺序） | 每行必填与含义 |
-|---|---|---|
-| intro | text | 首页介绍段落，每行一个段落 |
-| features | title,description | 亮点标题、说明，均必填 |
-| organizers | role,name | 主办/承办等角色、机构名，均必填 |
-| agenda | date,time,title,speaker,location | date 为 YYYY-MM-DD，time 为 HH:MM 或 HH:MM-HH:MM；title、location 必填；speaker 可空 |
-| directions | title,body | 交通方式标题、说明，均必填 |
-| hotels | name,address,description,url | 酒店名、地址、说明必填；URL 可空，不自动预订 |
-| contacts | name,responsibility,email,phone,note | 名称、职责必填；email/phone 至少一个；备注可空 |
-| faqs | question,answer | 静态问题与答案，均必填 |
-| resources | title,description,url,asset,type | 标题、说明必填；url 或 asset 必须且只能填一个；type 是展示类型可空 |
-| recordings | title,description,url | 标题、说明、http/https URL 都必填；仅 event.recordingsEnabled=true 才进入输出 |
-
-重复或冲突记录拒绝：重复 key；重复介绍、亮点标题、酒店名称、FAQ 问题、资源标题或回放标题；重复主办角色+机构、联系人名称+职责；日程同一日期+时段+地点重复。日程日期必须在活动开始/结束日期范围内，时段结束必须晚于开始。不同地点可以同时间安排不同活动。
-
-## 3. 公共素材约束
-
-素材路径相对于工作簿所在目录，如 `assets/participant-notes.pdf`。禁止绝对路径、`..`、反斜杠、隐藏目录、符号链接、vendor/node_modules/data/uploads 和凭据文件；不能直接引用旧项目素材目录。只有被工作簿引用的公共素材会复制。
-
-允许 png/jpg/jpeg/webp/pdf/docx/pptx，单文件最多 20MB；图片验证实际格式，最多 4000 万像素；Office 下载素材拒绝宏。输入 SVG 不接收，以避免脚本/外链风险；系统自行生成安全、可编辑的 hero.svg 与 poster.svg。URL 仅允许完整 http/https，不允许 javascript、data、file、ftp 或带用户名密码。
-
-素材复制为 `frontend/public/assets/<原相对路径>`，JSON 使用相应 `/assets/<原相对路径>`。例如输入 `assets/participant-notes.pdf` 输出 URL 为 `/assets/assets/participant-notes.pdf`。这是保留输入目录层级的确定性映射，不是第二份可编辑配置。独立会议指南在有 event.siteUrl 时，将它与公共素材路径组合成完整 URL；没有网站地址时明确标注为需先启动网站的本地演示路径，不冒充公开下载链接。
-
-不要把身份证、参会人员表、投稿者附件或其他非公开信息放入公共素材；业务上传由 backend 独立存储和鉴权提供。
-
-## 4. 生成 JSON 的形状
-
-config.json 位于输出根目录，也原样复制到 frontend/public/config.json 与 frontend/src/config.generated.json。生成后的 JSON 是派生文件，不是下一次配置源。
+config.readiness 由实际缺失的 event.capacity、attendance.openAt、attendance.closeAt、submission.openAt、submission.closeAt 派生：
 
 ```json
 {
-  "event": {"slug":"...","title":"...","shortTitle":"...","subtitle":"...","startAt":"...+08:00","endAt":"...+08:00","timezone":"Asia/Shanghai","location":"...","capacity":120,"language":"zh-CN","siteUrl":"...","recordingsEnabled":false},
-  "attendance":{"openAt":"...","closeAt":"..."},
-  "submission":{"openAt":"...","closeAt":"...","supplementCloseAt":"..."},
-  "files":{"maxFileBytes":20971520,"maxAttachments":3,"allowedExtensions":["pdf","docx","pptx"]},
-  "sync":{"pollSeconds":60},
-  "branding":{"primaryColor":"#5b9bd5","heroImage":"/assets/hero.svg"},
-  "home":{"intro":["..."],"target":"...","features":[{"title":"...","description":"..."}],"organizers":[{"role":"...","name":"..."}]},
-  "agenda":[{"date":"2031-06-14","time":"09:00-09:30","title":"...","location":"..."}],
-  "travel":{"address":"...","directions":[{"title":"...","body":"..."}]},
-  "hotels":[],"contacts":[],"faqs":[],"resources":[],"recordings":[],
-  "forms":{"profileOptionalFields":["department","job","personalIntroduction"]},
-  "source":{"schemaVersion":"1.0.0","workbookSha256":"..."}
+  "mode": "preview",
+  "unresolved": [{"key": "event.capacity", "reason": "未提供会务事实，需主办方确认"}],
+  "attendanceEnabled": false,
+  "submissionEnabled": false
 }
 ```
 
-## 5. 材料与可验证清单
+报名可用需真实容量和完整报名窗口；投稿可用需真实容量和完整投稿窗口。二者独立判定。mode=ready 表示这五项配置齐全，不表示当前窗口仍开放或活动未结束。mode=preview 明确显示会务预览、待确认事项。登录和资料功能仍能演示，后端在报名、投稿和补附件写入边界拒绝条件不齐的操作。
 
-每次生成同一工作簿+同一素材+同一运行时模板，在同一字体/库版本环境下产生相同文件字节。无 LLM 重写前端代码，无付费模型调用。
+未知的容量、截止时间和政策不出现在海报或社媒文案中。预览物料明确标为草稿或会务预览。具体某天日程的未知时刻、地点使用语义标签，不能伪装成00:00—23:59。
 
-- frontend/public/assets/hero.svg：2048×512 电蓝科技风横幅，标题自动适配，使用同一规范化日期和场地，无旧品牌。
-- materials/poster.svg：可编辑 SVG 海报，可在矢量设计软件中调整；文本保留为文本。
-- materials/poster.png：有中文系统字体时生成社交传播用 PNG；无字体时仍生成可编辑 SVG，并在 manifest 提示。
-- materials/conference-guide.docx：可编辑 Word 会议指南，固定、可复现元数据。
-- materials/conference-guide.html：可编辑/打印 HTML 备份。
-- materials/social-posts.txt：长版与简版中文邀请文本，不自动发送。
-- manifest.json：工作簿、配置、运行时模板和每项生成文件的 SHA-256，活动 slug、版本、文件清单与必要提示。
+## 集合工作表
 
-图片和宣传文案会含配置的网站地址；示例地址属于保留示例域名，不代表已部署。不要在材料里另行维护会议时间或场地。
+| 表名 | 精确表头 | 必填和用途 |
+|---|---|---|
+| intro | text | 介绍段落，每行一个；至少一条 |
+| features | title,description | 标题和说明均必填；可空 |
+| organizers | role,name | 角色和机构均必填；按角色分组展示 |
+| brandmarks | label,asset | 固定的品牌标识集合，最多五个；名称和安全本地图片必填；用于可编辑横幅 |
+| agenda | date,time,title,speaker,chair,location,timeGroup,topicGroup,speakerGroup,chairGroup,locationGroup | date/title 必填；其他可空；至少一条 |
+| notices | title,body | 手册参会须知标题、正文均必填；可空 |
+| mealGuide | title,body | 食宿自理说明、就餐地址等标题、正文均必填；可空 |
+| sourceNotes | title,body | 资料出处、原手册页码、未提供事实的说明；均必填，可空 |
+| directions | title,body | 交通说明标题、正文均必填；可空 |
+| hotels | name,address,description,url | 名称、地址、说明必填；URL 可空，不自动预订 |
+| contacts | name,responsibility,email,phone,note | 名称、职责必填，email/phone 至少一项；至少一条 |
+| faqs | question,answer | 问题和答案均必填；至少一条 |
+| resources | title,description,url,asset,type | 标题、说明必填，url/asset 必须且仅填一项；type 可空，map 表示在指南嵌入的地图图片 |
+| recordings | title,description,url | 全部必填；只有 recordingsEnabled=true 时进入输出 |
 
-## 6. 安全再生成与运营状态
+agenda 兼容 v1 的 date,time,title,speaker,location 表头，也接受无分组元数据的 date,time,title,speaker,chair,location。新工作簿推荐完整 11 列表头。
 
-验证失败返回退出码 2，输出目录不被触碰。素材与运行时模板也先验证；生成材料在临时目录内完成，成功后才覆盖生成器拥有的文件。
+agenda.date 是日期，须在活动日期范围内；time 是 HH:MM、HH:MM-HH:MM、全天或时间待通知。空时刻规范化为时间待通知，空地点规范化为地点待通知。时段结束须晚于开始。speaker/chair 保留原主讲人与主持人及其单位职务，不能拼成一个字段。分组 ID 只标明同日相邻记录在原表中共享同一时间、题目、主讲人、主持人或地点；同组内容须一致，不能生成或隐藏不同事实。地点行横跨四列，按日展示“时间、题目、主讲人、主持人”。相同日期、时段、地点、题目的完全重复记录拒绝。
 
-新输出目录可不存在或为空。非空未知目录拒绝。再生成必须有本生成器的有效 manifest，且 event.slug 不得改变。只覆盖 manifest 已记录的生成文件或新增文件，不删除任何已有文件；不覆盖未知用户文件，不追随符号链接。业务 backend/data、uploads、.env、node_modules 不从 template 复制，不被覆盖或删除；业务 PostgreSQL 从未由生成器连接。移除资源后，旧的已生成素材文件可能保留在磁盘但不会出现在新配置中，需要管理员按自己的保留策略处理。
+重复 key、介绍段落、亮点标题、酒店名、FAQ 问题、资源标题、回放标题、主办角色+机构或联系人名称+职责均拒绝。
 
-修改同一会议的页面事实后，用相同输入和输出再生成，并执行 npm run build、重启服务。独立新会议需要新目录、独立数据库/账号；绝不能通过改 slug 重用旧业务存储。升级模板或业务流程前应按发布说明备份、迁移并测试，生成器只承担配置/静态材料生成。
+## 固定 defaults
 
-## 7. 给另一位 LLM 的任务提示
+| key | 默认值 | 可用范围 |
+|---|---|---|
+| profileOptionalFields | department,job,personalIntroduction | 三个字段的逗号分隔子集 |
+| files.maxFileBytes | 20971520 | 正整数，不超过 20MB |
+| files.maxAttachments | 3 | 1–3 |
+| files.allowedExtensions | pdf,docx,pptx | 三种扩展名的非空子集，不带点 |
+| sync.pollSeconds | 60 | 5–3600 秒 |
 
-“只使用本包 docs/config-schema.md 的输入契约，为新虚构会议编写唯一 XLSX 和公共素材。不要复制任何旧活动的人名、地点、机构、logo 或日期。每个主要事实只填一处；不要放凭据，不创建 UI/飞书反向同步。保留固定个人资料、参会报名与学术投稿流程。运行只读验证后，生成到该 slug 的独立目录，运行测试与构建，检查横幅、海报与会议指南时间/场地一致。不要部署、发送通知、开账号或写 GitHub，除非另有明确授权。”
+固定资料字段是姓名、手机号（只读）、邮箱、单位、身份、研究方向；部门、职务、个人简介可选。固定投稿字段是标题、摘要、关键词、作者与单位、报告人、附件、备注，每人一份投稿。这不是通用表单或任意流程引擎，不增加新平台。
+
+## 公共素材与横幅
+
+素材路径相对于工作簿目录，如 assets/handbook.pdf。禁止绝对路径、..、反斜杠、隐藏目录、符号链接、vendor/node_modules/data/uploads 和凭据文件。只复制被引用的素材。输入图片允许 png/jpg/jpeg/webp，下载资料另可 pdf/docx/pptx，每个不超过20MB；图片验证实际格式且最多4000万像素，Office 拒绝宏。输入 SVG 不接收。URL 仅允许完整无凭据 http/https。
+
+素材复制到 frontend/public/assets/<原相对路径>，配置中路径是 /assets/<原相对路径>。例如 assets/handbook.pdf 对应 /assets/assets/handbook.pdf。在 siteUrl 未提供时，独立指南将资源路径明确标为本地演示路径。不要把身份证、报名名单或私人投稿附件放进公共素材。
+
+有合法、同活动的现成 heroImage 时优先保留它；真实手册示例使用用户授权的原站 WebP，不能拿其旧日期和品牌用于新活动。给定heroImage时保留静态成图，不额外叠加logo或brandmarks。空白时 scripts/hero.py 生成可编辑 SVG 品牌骨架；brandmarks、seriesText、bannerTitle 都来自新活动 XLSX。日期和场地分区，位置延续原骨架。生成的图片不是对所有新品牌的通用设计系统。
+
+## 生成文件与再生成安全
+
+config.json 同字节镜像到 frontend/public/config.json、frontend/src/config.generated.json。包含 event 日期精度、nullable 时刻/容量、独立窗口、readiness、固定业务设置、完整集合和 source.schemaVersion/workbookSha256。
+
+生成物料：
+- materials/poster.svg 和 poster.png：海报复用实际选用的横幅，未知运营事实省略。SVG 横幅转 PNG 优先使用已安装的 CairoSVG，否则调用 Inkscape；均不可用时保留可编辑 SVG 并在 manifest 明确提示 PNG 未生成。现成 JPG/PNG/WebP 横幅只需 Pillow 与中文字体
+- materials/conference-guide.docx：可编辑完整指南，分日四列表格、地点跨列行、重复表头，允许大表自然分页
+- materials/conference-guide.html：同一章节与日程结构的打印备份
+- materials/social-posts.txt：长短版草稿，不自动发送
+- manifest.json：输入、配置、模板与产物 SHA-256、版本、readiness 和警告
+
+同一输入、素材、模板和字体/库版本产生同字节。验证失败退出码2，不触碰输出。生成先在临时目录成功，再覆盖生成器拥有的文件。未知非空输出目录拒绝；再生成需有效 manifest 且相同 slug。未知文件不覆盖，不删除已有文件，不追随链接。data、uploads、.env、node_modules 不复制或删改。删除输入资源后旧已生成文件可能留在磁盘，但不再出现在新配置中。
+
+修改会议事实后，重新生成、npm run build 并重启服务。独立新会议必须新目录、新数据库和账号。模板升级、数据库迁移或上线另需明确授权。
+
+## 从任意原始资料开始
+
+按照README和SKILL逐页查看原文档，建立唯一XLSX，记录sourceNotes来源页码，并引用原PDF和已授权的公共图片。运行校验、确定性生成、构建和测试；实际渲染Word全页检查分页，核对全部日程、独立主持人和公共物料。文档未给的会务事实留空，不依赖任何专属转录脚本或预填答案。
+
+## 固定正文引用
+
+重复出现的活动事实可以在下列正文单元格中写固定引用；规范事实仍只在 event、travel 与 organizers 中填写一次。生成器在规范数据验证后、生成 JSON 与物料前展开引用，输出层随后按 HTML、XML 或 SVG 的上下文转义。引用本身不执行表达式，不查询任意字段，也不接受条件、循环或函数。
+
+| 唯一允许的引用 | 事实来源与显示 |
+|---|---|
+| {{event.title}} | event.title 活动全称 |
+| {{event.shortTitle}} | event.shortTitle 短名称，可组成会务组署名 |
+| {{event.dateRange}} | event.startDate/endDate；手册示例显示 2026年9月4日至9月8日，不补午夜或结束时刻 |
+| {{event.location}} | event.location 主会场名 |
+| {{travel.address}} | travel.address 街道地址；与会场名分开存储，正文可写 {{event.location}}（{{travel.address}}） |
+| {{organizers.主办单位}} | organizers 中角色恰为 主办单位 的名称，按输入顺序用 、 连接 |
+| {{organizers.协办单位}} | organizers 中角色恰为 协办单位 的名称，按输入顺序用 、 连接 |
+| {{organizers.支持单位}} | organizers 中角色恰为 支持单位 的名称，按输入顺序用 、 连接 |
+
+可用正文是 intro；home.target；features 的 title/description；agenda 的 title/speaker/chair/location；notices、mealGuide、sourceNotes、directions 的 title/body；hotels 的 name/address/description；contacts 的 name/responsibility/note；faqs 的 question/answer；resources、recordings 的 title/description；brandmarks 的 label。日期、时段、ID、URL、素材路径、规范事实本身及其他字段不接受正文引用。
+
+引用名必须逐字匹配白名单，不能加空格。未知引用、括号不完整、表达式、递归规范事实或引用缺少对应组织角色会验证失败，不能把 {{unknown}} 原样留到页面。展开是一次构建步骤，不是运行时反向同步；每次重新读取 XLSX 后展开。调整活动名称、日期、会场、街道地址或组织名称后，重新生成即可更新引用它们的各段正文。
+
+真实手册 intro 使用上述引用，但当前展开仍保留原标题、日期、会场地址、五家主办和三家协办的原文以及会务组署名。须知中举办日期的“—”统一为 dateRange 的“至”，仅是派生显示标点，不改变日期。原资料落款2026年9月是来源署名月份，不能假定它随举办日期变化。具体签到时刻、分会场房间、讲者单位和交通地点是另有出处的事实，不能由活动日期或主会场推断替换。sourceNotes 保留原 PDF 的历史来源记录，并说明正文显示由规范事实派生。
+
+打包带输入快照时，package_instance还会比对派生配置SHA及公共素材SHA；绑定文件缺失/变化或同名素材换字节也要求先再生成，不只检查XLSX本身。
