@@ -1,4 +1,9 @@
 /* Camp-only content and form fields; the shared template owns the visual shell. */
+/* Crop the original 1200×283 logo to x=0,y=132,w=660,h=120 without redrawing it. */
+.public-shell .event-banner__kiz-logo { display:block; position:relative; width:344px; max-width:100%; aspect-ratio:660 / 120; overflow:hidden; background:#fff; border-radius:4px; }
+.public-shell .event-banner__kiz-logo img { position:absolute; top:-110%; left:0; width:181.818182%; max-width:none; height:auto; filter:none; mix-blend-mode:normal; }
+.public-shell .event-banner__brandmarks:only-child { grid-column:1 / -1; }
+@media(max-width:767px) { .public-shell .event-banner__kiz-logo { width:276px; } }
 .forum-notice .content-section__body > p { white-space: pre-line; }
 .camp-course-description { margin-bottom: 22px; }
 .camp-course-description h3 { margin: 0 0 8px; color: var(--panshi-color-dark); font-size: 17px; }
