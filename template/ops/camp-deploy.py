@@ -174,6 +174,7 @@ WantedBy=multi-user.target
   for value in runtime.values():
    if len(value)>12:log=log.replace(value,'[REDACTED]')
   print(log);raise RuntimeError('Camp registration service failed to start')
+ run([str(node),str(release/'ops/cms-status.mjs')],env={**os.environ,**runtime})
  webroot=base/'acme';(webroot/'.well-known/acme-challenge').mkdir(parents=True,exist_ok=True)
  for directory in [webroot,webroot/'.well-known',webroot/'.well-known/acme-challenge']:directory.chmod(0o755)
  http=f'''server {{
