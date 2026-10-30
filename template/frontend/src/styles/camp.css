@@ -4,15 +4,15 @@
 .public-shell .event-banner__kiz-logo img { position:absolute; top:-110%; left:0; width:181.818182%; max-width:none; height:auto; filter:grayscale(1) invert(1) contrast(2); mix-blend-mode:screen; }
 .public-shell .event-banner__brandmarks:only-child { grid-column:1 / -1; }
 @media(max-width:767px) { .public-shell .event-banner__kiz-logo { width:276px; } }
-/* KIZ official site's primary green; retain the source artwork and alpha channel. */
+/* User-selected jade green; retain the source artwork and alpha channel. */
 .public-shell {
-  --panshi-color-primary-dark:#00594f;
+  --panshi-color-primary-dark:#21634f;
   --panshi-color-secondary:#99d0c8;
   --panshi-color-accent:#3c9b87;
   --panshi-color-dark:#143e35;
   --panshi-color-surface-muted:#f3f8f5;
 }
-.public-shell .event-banner.event-banner--background { background-color:#007164; background-blend-mode:luminosity; }
+.public-shell .event-banner.event-banner--background { background-color:var(--panshi-color-primary); background-blend-mode:luminosity; }
 .public-shell .event-banner__title { text-shadow:0 2px 5px rgb(0 35 29 / 45%); }
 .public-shell .event-footer { background:#123e35; }
 .public-shell .mobile-service-bar__entry { background:var(--panshi-color-primary); box-shadow:inset 0 1px rgb(255 255 255 / 26%),0 5px 14px rgb(0 80 65 / 20%); }
@@ -32,6 +32,25 @@
 .public-shell .account-page .account-button:focus-visible { outline-color:#68b8a4; }
 .public-shell .account-tabs, .public-shell .account-access-switch { background:#eef5f1; }
 .public-shell .account-tabs button:hover:not(.is-active) { background:#deeee5; }
+/* Dark labels keep the selected light green readable at normal button sizes. */
+.public-shell .registration-cta,
+.public-shell .auth-button,
+.public-shell .auth-actions button,
+.public-shell .application-actions button,
+.public-shell .faq-form-page button,
+.public-shell .faq-actions .faq-actions__primary,
+.public-shell .mobile-service-bar__entry,
+.public-shell .account-access-switch button[aria-selected='true'],
+.public-shell .account-tabs button.is-active,
+.public-shell .account-page .account-button:not(.account-button--secondary):not(.account-button--danger),
+.public-shell .attachment-upload__input::file-selector-button { color:#143e35; }
+.public-shell main a:not(.registration-cta):not(.auth-button):not(.account-button),
+.public-shell .account-button--secondary,
+.public-shell .account-page .account-actions a.account-button--secondary,
+.public-shell .account-link-button,
+.public-shell .field-inline-action,
+.public-shell .attachment-upload__camera,
+.public-shell .event-navigation__link[aria-current='page'] { color:var(--panshi-color-primary-dark); }
 .forum-notice .content-section__body > p { white-space: pre-line; }
 .camp-course-description { margin-bottom: 22px; }
 .camp-course-description h3 { margin: 0 0 8px; color: var(--panshi-color-dark); font-size: 17px; }
