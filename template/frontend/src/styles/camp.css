@@ -29,34 +29,39 @@
 .public-shell .resource-download-links a:visited { color:var(--panshi-color-primary); }
 .public-shell .resource-download-links a:hover { color:var(--panshi-color-primary-dark); }
 .public-shell .account-page .registration-choice>input { accent-color:var(--panshi-color-primary); }
-.public-shell .account-access-switch button[aria-selected='true'],
-.public-shell .account-tabs button.is-active,
-.public-shell .account-button:not(.account-button--secondary):not(.account-button--danger) { background:var(--panshi-color-primary); border-color:var(--panshi-color-primary); }
-.public-shell .account-button--secondary,
-.public-shell .account-page .account-actions a.account-button--secondary { color:var(--panshi-color-primary); border-color:#84b4a7; }
+/* Every text button uses white labels, including secondary/account actions.
+   Keep the mobile drawer backdrop transparent; it is an overlay, not an action. */
+.public-shell.public-shell--forum button:not(.mobile-service-dock__backdrop),
+.public-shell.public-shell--forum a.account-button,
+.public-shell.public-shell--forum .account-page .account-actions a.account-button,
+.public-shell.public-shell--forum .registration-cta,
+.public-shell.public-shell--forum .auth-button,
+.public-shell.public-shell--forum .sidebar-cta,
+.public-shell.public-shell--forum .faq-actions a,
+.public-shell.public-shell--forum .mobile-service-bar__entry,
+.public-shell.public-shell--forum .attachment-upload__input::file-selector-button {
+  color:#fff;
+  background:var(--panshi-color-primary);
+  border-color:var(--panshi-color-primary);
+}
+.public-shell.public-shell--forum button.account-button--danger,
+.public-shell.public-shell--forum .account-page .account-actions a.account-button--danger {
+  background:#a83c3c;
+  border-color:#a83c3c;
+}
+.public-shell.public-shell--forum .account-access-switch button[aria-selected='true'],
+.public-shell.public-shell--forum .account-tabs button.is-active,
+.public-shell.public-shell--forum button:not(.mobile-service-dock__backdrop):not(.account-button--danger):hover:not(:disabled) {
+  background:var(--panshi-color-primary-dark);
+  border-color:var(--panshi-color-primary-dark);
+}
 .public-shell .account-page .account-button:focus-visible { outline-color:#68b8a4; }
 .public-shell .account-tabs, .public-shell .account-access-switch { background:#eef5f1; }
-.public-shell .account-tabs button:hover:not(.is-active) { background:#deeee5; }
-/* Dark labels keep the selected light green readable at normal button sizes. */
-.public-shell .registration-cta,
-.public-shell .auth-button,
-.public-shell .auth-actions button,
-.public-shell .application-actions button,
-.public-shell .faq-form-page button,
-.public-shell .faq-actions .faq-actions__primary,
-.public-shell .mobile-service-bar__entry,
-.public-shell .account-access-switch button[aria-selected='true'],
-.public-shell .account-tabs button.is-active,
-.public-shell .account-page .account-button:not(.account-button--secondary):not(.account-button--danger),
-.public-shell .attachment-upload__input::file-selector-button { color:#143e35; }
-.public-shell .sidebar-cta,
-.public-shell .mobile-service-bar__entry { color:#fff; }
-.public-shell main a:not(.registration-cta):not(.auth-button):not(.account-button),
-.public-shell .account-button--secondary,
-.public-shell .account-page .account-actions a.account-button--secondary,
-.public-shell .account-link-button,
-.public-shell .field-inline-action,
-.public-shell .attachment-upload__camera,
+.public-shell.public-shell--forum .account-link-button,
+.public-shell.public-shell--forum .field-inline-action { padding:6px 10px; border-radius:5px; }
+.public-shell.public-shell--forum .mobile-service-bar__details { border-radius:8px; }
+.public-shell.public-shell--forum .mobile-service-bar__details span { border-color:#fff; }
+.public-shell main a:where(:not(.registration-cta):not(.auth-button):not(.account-button)),
 .public-shell .event-navigation__link[aria-current='page'] { color:var(--panshi-color-primary-dark); }
 .forum-notice .content-section__body > p { white-space: pre-line; }
 .camp-course-description { margin-bottom: 22px; }
