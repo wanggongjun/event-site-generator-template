@@ -41,7 +41,7 @@ export async function createSiteCms({db,env,config}){
    const id='theme-'+patch.id,at=new Date().toISOString();
    db.prepare('INSERT OR IGNORE INTO cms_versions(id,payload,createdAt) VALUES(?,?,?)').run(id,JSON.stringify(payload),at);
    await history({...version(id),action:'主题更新',source:live.id});
-   await client.write(tables.control,{'当前版本':id,'预览链接':'','待发布版本':'','处理结果':'湖蓝横幅与按钮配色已更新。其他草稿未发布；需要预览时请重新生成。','更新时间':at},controls[0].record_id);
+   await client.write(tables.control,{'当前版本':id,'预览链接':'','待发布版本':'','处理结果':'横幅与按钮配色已更新。其他草稿未发布；需要预览时请重新生成。','更新时间':at},controls[0].record_id);
    db.exec('BEGIN IMMEDIATE');try{set('previous',get('current'));set('current',id);set('preview',null);set(key,true);db.prepare('UPDATE cms_versions SET published=1,action=?,source=? WHERE id=?').run('主题更新',live.id,id);db.exec('COMMIT');}catch(e){db.exec('ROLLBACK');throw e;}
    live=version(id);console.log(JSON.stringify({themePatch:patch.id,ok:true}));
   }
