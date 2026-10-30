@@ -1,29 +1,138 @@
-import {useEffect,useState,lazy,Suspense} from 'react';
-import {Link,NavLink,Route,Routes,useLocation} from 'react-router-dom';
-import source from './config.generated.json';
-import {Config} from './types';
+import {useEffect,useState,lazy,Suspense,type CSSProperties} from 'react';
+import {Link,Route,Routes,useLocation} from 'react-router-dom';
+import sourceConfig from './config.generated.json';
+import {type Config,type PersonContact,eventDates,formatDate} from './types';
+import {api} from './api';
 import {EventBanner} from './components/EventBanner';
-const Account=lazy(()=>import('./Account').then(m=>({default:m.Account}))); 
+import {EventNavigation} from './components/EventNavigation';
+import {InfoCard} from './components/InfoCard';
+import {ContentSection} from './components/ContentSection';
+import {AgendaTables} from './components/AgendaTables';
+import {MobileServiceDock} from './features/learner/MobileServiceDock';
 import './styles/camp.css';
-const c=source as Config;
-const nav=[['/','首页'],['/about','培训简介'],['/agenda','日程安排'],['/courses','课程介绍'],['/fees','费用与发票'],['/travel','住宿交通'],['/faq','常见问题'],['/contact','联系我们']];
-const notice=(name:string)=>c.notices?.find(x=>x.title===name)?.body||'';
-const dates=['2026-12-12','2026-12-13','2026-12-14'];
-const themes=['认知与智能体搭建','数据、模型与工作流','科研平台与工具实操'];
-function Contacts(){return <div className="camp-contacts">{c.contacts.map(x=><article key={x.name}><small>{x.responsibility}</small><h3>{x.name}</h3><a href={'tel:'+x.phone}>{x.phone}</a><a href={'mailto:'+x.email}>{x.email}</a><p>{x.note}</p></article>)}</div>}
-function Heading({eyebrow,title,children}:{eyebrow?:string;title:string;children?:React.ReactNode}){return <header className="camp-heading">{eyebrow&&<span>{eyebrow}</span>}<h2>{title}</h2>{children&&<p>{children}</p>}</header>}
-function Home(){const [now,setNow]=useState(Date.now());useEffect(()=>{const t=setInterval(()=>setNow(Date.now()),60000);return()=>clearInterval(t)},[]);const start=Date.parse(c.event.startAt!);const days=Math.max(0,Math.ceil((start-now)/86400000));return <>
- <section className="camp-intro"><div><span className="camp-kicker">KUNMING · 2026</span><h2>让 AI 进入你的<br/><em>真实科研工作流</em></h2><p>从大模型认知到智能体搭建，从科研数据到模型训练。三天集中实训，把工具使用经验转化为可复用的工作方法。</p><div className="camp-actions"><Link className="camp-button" to="/register">注册报名 ↗</Link><Link to="/agenda">查看三天日程 →</Link></div><small>线上报名截至 11月20日 24:00 · 学员需自带笔记本电脑</small></div><aside className="camp-event-card"><span>2026年12月</span><strong>12 — 14</strong><p>星期六至星期一 · 云南昆明</p><dl><div><dt>培训地点</dt><dd>{c.event.location}</dd></div><div><dt>培训费用</dt><dd>100元 / 人（拟）</dd></div><div><dt>{now>start?'活动状态':'距开营'}</dt><dd>{now>Date.parse(c.event.endAt!)?'已结束':now>=start?'进行中':`${days} 天`}</dd></div></dl></aside></section>
- <section className="camp-statbar">{[['3','天集中实训'],['16','个教学单元'],['3','类应用场景'],['80–200','人培训规模']].map(([n,t])=><div key={t}><strong>{n}</strong><span>{t}</span></div>)}</section>
- <section className="camp-section"><Heading eyebrow="LEARN BY DOING" title="带着问题来，带着方法回去">讲解、演示、练习、点评，每个教学单元都有案例或上机任务。</Heading><div className="camp-feature-grid">{c.home.features.map((x,i)=><article key={x.title}><span>0{i+1}</span><h3>{x.title}</h3><p>{x.description}</p></article>)}</div></section>
- <section className="camp-section"><Heading eyebrow="THREE-DAY PROGRAM" title="从认知到实操，再到完整闭环"/><div className="camp-days">{themes.map((x,i)=><Link to={'/agenda?day='+i} key={x}><span>DAY 0{i+1} / 12.{12+i}</span><h3>{x}</h3><p>{['大模型、AI办公、提示词、智能体、Skill','知识库、科研数据、模型训练、模型选型、长时任务','磐石平台、科研数据服务、曙光工具、组学工具链'][i]}</p><b>查看日程 →</b></Link>)}</div></section>
- <section className="camp-section camp-organizers"><Heading title="组织机构"/>{['主办单位','协办单位'].map(role=><div key={role}><small>{role}</small><p>{c.home.organizers.filter(x=>x.role===role).map(x=>x.name).join('　 /　 ')}</p></div>)}</section>
- <section className="camp-section"><Heading title="会务与财务咨询"/><Contacts/></section></>}
-function About(){return <><Heading eyebrow="ABOUT THE CAMP" title="面向真实场景的体系化AI应用培训"/>{c.home.intro.map(t=><p key={t}>{t}</p>)}<h3>适合谁参加</h3><p>{c.home.target}</p><div className="camp-feature-grid">{c.home.features.map(x=><article key={x.title}><h3>{x.title}</h3><p>{x.description}</p></article>)}</div><h3>组织机构</h3>{c.home.organizers.map(x=><p key={x.name}>{x.role}：{x.name}</p>)}<h3>考核与证书</h3><p>{notice('结业证书')}</p></>}
-function Agenda(){const loc=useLocation();const initial=Number(new URLSearchParams(loc.search).get('day')||0);const [day,setDay]=useState(initial>=0&&initial<3?initial:0);return <><Heading eyebrow="PROGRAM" title="三天日程安排">拟定日程，最终以正式通知和学员手册为准。</Heading><div className="camp-tabs" role="tablist" aria-label="选择日期">{dates.map((d,i)=><button key={d} id={'day-tab-'+i} role="tab" aria-selected={day===i} aria-controls="day-program" onClick={()=>setDay(i)}>12月{12+i}日 <span>{['星期六','星期日','星期一'][i]}</span></button>)}</div><section id="day-program" role="tabpanel" aria-labelledby={'day-tab-'+day}><h3>{themes[day]}</h3><div className="camp-agenda">{c.agenda.filter(x=>x.date===dates[day]).map(x=><article key={x.time}><time>{x.time.replace('-', '—')}</time><div><h4>{x.title}</h4>{notice(x.title)&&<p>{notice(x.title)}</p>}<small>{x.speaker}</small></div></article>)}</div></section></>}
-function Courses(){return <><Heading eyebrow="CURRICULUM" title="16门课程，一套可实践的方法"/><div className="camp-courses">{c.notices?.filter(x=>/^第\d+课/.test(x.title)).map((x,i)=><article key={x.title}><span>{String(i+1).padStart(2,'0')}</span><div><h3>{x.title.replace(/^第\d+课\s*/,'')}</h3><p>{x.body}</p></div></article>)}</div></>}
-function Fees(){return <><Heading eyebrow="REGISTRATION & FEES" title="费用与发票"/><div className="camp-price"><span>培训费 · 所有身份</span><strong>¥100<small> / 人（拟）</small></strong><p>最终收费标准以正式通知为准。</p></div>{['在线报名','现场报名','对公转账','现场缴费','缴费确认','发票说明','退费与名额转让'].map(x=><section className="camp-text-section" key={x}><h3>{x}</h3><p>{notice(x)}</p></section>)}<Link className="camp-button" to="/register">填写报名信息 →</Link></>}
-function Travel(){return <><Heading eyebrow="PLAN YOUR VISIT" title="住宿与交通">报到：12月11日14:00—18:00，12月12日08:00—09:00。</Heading><div className="camp-callout"><h3>培训地点：{c.event.location}</h3><p>园区地址：{c.travel.address}</p></div>{c.travel.directions.map(x=><section className="camp-text-section" key={x.title}><h3>{x.title}</h3><p>{x.body}</p></section>)}<h3>推荐住宿</h3><p>住宿费用自理，请直接联系酒店确认房态及协议价。</p><div className="camp-hotels">{c.hotels.map(x=><article key={x.name}><h3>{x.name}</h3><p>{x.address}</p><p>{x.description}</p></article>)}</div><h3>用餐</h3>{c.mealGuide?.map(x=><p key={x.title}>{x.title}：{x.body}</p>)}</>}
-function Faq(){return <><Heading eyebrow="FAQ" title="常见问题"/>{c.faqs.map(x=><details className="camp-faq" key={x.question}><summary>{x.question}</summary><p>{x.answer}</p></details>)}</>}
-function Privacy(){return <><Heading title="报名信息使用说明"/><p>主办单位：中国科学院昆明动物研究所。报名资料用于本次培训的身份核验、会务联络、签到、缴费核对、发票开具及证书办理。</p><p>姓名、手机号、邮箱、单位、身份、证明材料和开票资料仅提供给办理相关事务的授权工作人员。身份材料通过私有存储保存，不作为公开资料发布。</p><p>账号使用他山统一认证；姓名、单位、专业、研究方向、邮箱和院系等通用资料可从关联服务读取，并在提交报名后同步。发票、饮食、证明材料等本次活动专属资料不写入通用资料库。</p><p>饮食禁忌和希望解决的问题为选填，请勿填写与培训无关的敏感信息。需要更正或删除报名资料，请联系会务组；依法需要留存的财务记录按相关要求处理。</p><Contacts/></>}
-export function App({preview=false}:{preview?:boolean}={}){const loc=useLocation();const [menu,setMenu]=useState(false);const account=['/register','/account'].includes(loc.pathname);useEffect(()=>{document.title=`${nav.find(x=>x[0]===loc.pathname)?.[1]||(account?'注册报名':'活动服务')} · 2026 AI for Science 实训营`;window.scrollTo(0,0);setMenu(false)},[loc.pathname]);return <div className="camp-shell"><a className="skip-link" href="#main-content">跳到主要内容</a><div className="camp-top"><Link to="/">中国科学院昆明动物研究所 <span>KIZ · CAS</span></Link><Link to="/account">个人中心 ↗</Link></div><EventBanner title="2026 AI for Science 实训营" titleHref="/" dates="2026年12月12日—14日" venue="云南 · 昆明" tagline={c.event.subtitle} backgroundImage={c.branding.backgroundImage||'/brand/banner-background.png'}/><nav className="camp-nav" aria-label="主导航"><button className="camp-menu" aria-expanded={menu} onClick={()=>setMenu(!menu)}>网站导航 <span>{menu?'−':'＋'}</span></button><div className={menu?'is-open':''}>{nav.map(([to,label])=><NavLink end to={to} key={to}>{label}</NavLink>)}<NavLink className="camp-register" to="/register">注册报名</NavLink></div></nav><main id="main-content" className={'camp-main '+(loc.pathname==='/'?'camp-main-home':'camp-paper')} tabIndex={-1}><Suspense fallback={<p role="status">正在加载…</p>}><Routes><Route path="/" element={<Home/>}/><Route path="/about" element={<About/>}/><Route path="/agenda" element={<Agenda/>}/><Route path="/courses" element={<Courses/>}/><Route path="/fees" element={<Fees/>}/><Route path="/travel" element={<Travel/>}/><Route path="/faq" element={<Faq/>}/><Route path="/contact" element={<><Heading title="联系我们"/><Contacts/></>}/><Route path="/privacy" element={<Privacy/>}/><Route path="/register" element={<Account config={c} offline={preview}/>}/><Route path="/account" element={<Account config={c} offline={preview}/>}/><Route path="*" element={<><Heading title="页面不存在"/><Link to="/">返回首页</Link></>}/></Routes></Suspense></main><footer className="camp-footer"><div><strong>2026 AI for Science 实训营</strong><p>主办单位：中国科学院昆明动物研究所</p><p>{c.event.subtitle}</p></div><div><Link to="/contact">联系我们</Link><Link to="/privacy">报名信息使用说明</Link><p>© 2026 中国科学院昆明动物研究所实训营会务组</p></div></footer><div className="camp-mobile-cta"><Link to="/agenda">查看日程</Link><Link to={account?'/account':'/register'}>{account?'个人中心':'注册报名 →'}</Link></div></div>}
+
+const Account=lazy(()=>import('./Account').then(m=>({default:m.Account})));
+const config=sourceConfig as Config;
+const navigation=[
+ {label:'首页',to:'/'},{label:'在线报名',to:'/register'},
+ {label:'费用与发票',to:'/fees'},{label:'交通住宿',to:'/travel'},
+ {label:'联系我们',to:'/contact'},{label:'常见问题',to:'/faq'},
+ {label:'个人中心',to:'/account'},
+];
+const notice=(title:string)=>config.notices?.find(item=>item.title===title)?.body;
+const registrationTitles=['收费标准','在线报名','现场报名','报到安排','结业证书'];
+const feeTitles=['收费标准','对公转账','现场缴费','缴费确认','发票说明','退费与名额转让'];
+
+function NoticeParagraphs({titles}:{titles:string[]}){
+ return <>{titles.map(title=>notice(title)&&<p key={title}>{title}：{notice(title)}</p>)}</>;
+}
+function ContactList({contacts=config.contacts}:{contacts?:PersonContact[]}){
+ return <div className="contact-list">{[...new Set(contacts.map(x=>x.responsibility))].map(group=>
+  <section className="contact-group" key={group}><h3>{group}</h3><ul>
+   {contacts.filter(x=>x.responsibility===group).map(p=><li key={p.name}>
+    <strong>{p.name}</strong>{p.email&&<span><a href={`mailto:${p.email}`}>{p.email}</a></span>}
+    {p.phone&&<span><a href={`tel:${p.phone}`}>{p.phone}</a></span>}{p.note&&<small>{p.note}</small>}
+   </li>)}
+  </ul></section>)}</div>;
+}
+function Organizations(){
+ return <>{[...new Set(config.home.organizers.map(x=>x.role))].map(role=>
+  <p key={role}>{role}：{config.home.organizers.filter(x=>x.role===role).map(x=>x.name).join('、')}</p>)}</>;
+}
+function Courses(){
+ return <>{config.notices?.filter(x=>/^第\d+课/.test(x.title)).map(x=>
+  <section className="camp-course-description" key={x.title}><h3>{x.title}</h3><p>{x.body}</p></section>)}</>;
+}
+function Home(){
+ return <div className="home-page forum-notice">
+  <ContentSection title="一、培训介绍">{config.home.intro.map((text,i)=><p key={i}>{text}</p>)}</ContentSection>
+  <ContentSection title="二、举办时间与地点">
+   <p>培训时间：{eventDates(config)}</p><p>培训地点：{config.event.location}</p>
+   <p>园区地址：{config.travel.address}</p>
+   {notice('会议形式')&&<p>培训形式：{notice('会议形式')}</p>}
+   {config.home.target&&<p>培训对象：{config.home.target}</p>}
+  </ContentSection>
+  <ContentSection title="三、日程安排"><p>{notice('日程后续通知')}</p><AgendaTables agenda={config.agenda}/></ContentSection>
+  <ContentSection title="四、课程介绍"><Courses/></ContentSection>
+  <ContentSection title="五、组织单位"><Organizations/></ContentSection>
+  <ContentSection title="六、报名与报到">
+   <NoticeParagraphs titles={registrationTitles}/>
+   <p><Link to="/register">在线报名</Link> · <Link to="/fees">查看缴费与发票说明</Link></p>
+  </ContentSection>
+  <ContentSection title="七、食宿与交通">
+   {config.mealGuide?.map(x=><p key={x.title}>{x.title}：{x.body}</p>)}
+   <p><Link to="/travel">查看交通路线与推荐住宿</Link></p>
+  </ContentSection>
+  <ContentSection title="八、联系方式"><ContactList/></ContentSection>
+ </div>;
+}
+function Travel(){
+ return <section className="public-page__section" aria-label="交通住宿"><div className="travel-sections">
+  <article className="travel-section"><h3>培训地点与报到</h3><div className="travel-section__body">
+   <p>培训地点：{config.event.location}</p><p>{config.travel.address}</p><p>{notice('报到安排')}</p>
+  </div></article>
+  {config.travel.directions.map(x=><article className="travel-section" key={x.title}><h3>{x.title}</h3><div className="travel-section__body"><p>{x.body}</p></div></article>)}
+  <article className="travel-section"><h3>食宿指引</h3>{config.mealGuide?.map(x=><div className="hotel-info" key={x.title}><h4>{x.title}</h4><p>{x.body}</p></div>)}</article>
+  <article className="travel-section"><h3>住宿信息</h3>{config.hotels.map(x=><div className="hotel-info" key={x.name}><h4>{x.name}</h4><p>{x.address}</p><p>{x.description}</p></div>)}</article>
+ </div></section>;
+}
+function Fees(){
+ return <section className="public-page__section forum-notice" aria-label="费用与发票">
+  {feeTitles.map(title=><ContentSection key={title} title={title}><p>{notice(title)}</p></ContentSection>)}
+  <p className="registration-cta-wrap"><Link className="registration-cta" to="/register">在线报名</Link></p>
+ </section>;
+}
+function Faq(){
+ return <section className="faq-page"><header className="faq-page__header"><div><h2>常见问题</h2><p>报名、缴费与会务事项说明</p></div></header>
+  <div className="faq-article">{config.faqs.map((x,i)=><article key={x.question}><h3>{i+1}. {x.question}</h3><p>{x.question==='费用是多少？'?notice('收费标准'):x.answer}</p></article>)}</div>
+ </section>;
+}
+function Privacy(){
+ const organizers=config.home.organizers.filter(x=>['主办单位','主办'].includes(x.role)).map(x=>x.name).join('、');
+ return <section className="public-page__section forum-notice"><ContentSection title="报名信息使用说明">
+  <p>主办单位：{organizers}。报名资料用于本次培训的身份核验、会务联络、签到、缴费核对、发票开具及证书办理。</p>
+  <p>姓名、手机号、邮箱、单位、身份、证明材料和开票资料仅提供给办理相关事务的授权工作人员。身份材料通过私有存储保存，不作为公开资料发布。</p>
+  <p>账号使用他山统一认证；姓名、单位、专业、研究方向、邮箱和院系等通用资料可从关联服务读取，并在提交报名后同步。发票、饮食、证明材料等本次活动专属资料不写入通用资料库。</p>
+  <p>饮食禁忌和希望解决的问题为选填，请勿填写与培训无关的敏感信息。需要更正或删除报名资料，请联系会务组；依法需要留存的财务记录按相关要求处理。</p>
+ </ContentSection><ContactList/></section>;
+}
+export function App({preview=false}:{preview?:boolean}={}){
+ const location=useLocation();const [authenticated,setAuthenticated]=useState(false);
+ const accountRoute=['/account','/register'].includes(location.pathname);
+ useEffect(()=>{document.title=`${config.event.shortTitle} · ${navigation.find(x=>x.to===location.pathname)?.label||'培训服务'}`;window.scrollTo(0,0)},[location.pathname]);
+ useEffect(()=>{if(preview||accountRoute)return;let active=true;api('/api/v1/me/profile').then(()=>{if(active)setAuthenticated(true)}).catch(()=>{if(active)setAuthenticated(false)});return()=>{active=false}},[preview,location.pathname]);
+ const entry={label:authenticated?'个人中心':'登录／注册',to:'/account?mode=login'};
+ const datesCard=<InfoCard title="重要日期" mobileGlass><dl className="date-list">
+  <div><dt>培训日期</dt><dd>{eventDates(config)}</dd></div>
+  {config.attendance.closeAt&&<div><dt>线上报名截止</dt><dd>{formatDate(config.attendance.closeAt,config.event.timezone)}</dd></div>}
+ </dl></InfoCard>;
+ const brandStyle=config.branding.primaryColor?({'--panshi-color-primary':config.branding.primaryColor,'--panshi-gradient-primary':`linear-gradient(135deg, ${config.branding.primaryColor} 0%, #9fd4c4 100%)`} as CSSProperties):undefined;
+ const organizers=config.home.organizers.filter(x=>['主办单位','主办'].includes(x.role));
+ return <div className="public-shell public-shell--forum" style={brandStyle}>
+  <a className="skip-link" href="#main-content">跳到主要内容</a>
+  <EventBanner title={config.event.title} titleHref="/" dates={eventDates(config)} venue={config.event.location}
+   seriesText={config.branding.seriesText} brandmarks={config.brandmarks}
+   backgroundImage={config.branding.backgroundImage||'/brand/banner-background.png'}/>
+  <EventNavigation items={navigation}/>
+  <div className="event-container public-layout" data-testid="desktop-content-sidebar">
+   <main id="main-content" tabIndex={-1}><Suspense fallback={<p role="status">正在加载…</p>}><Routes>
+    <Route path="/" element={<Home/>}/><Route path="/travel" element={<Travel/>}/>
+    <Route path="/fees" element={<Fees/>}/><Route path="/contact" element={<section className="public-page__section" aria-label="联系我们"><ContactList/></section>}/>
+    <Route path="/faq" element={<Faq/>}/><Route path="/privacy" element={<Privacy/>}/>
+    <Route path="/about" element={<div className="forum-notice"><ContentSection title="培训介绍">{config.home.intro.map((p,i)=><p key={i}>{p}</p>)}<p>{config.home.target}</p><Organizations/></ContentSection></div>}/>
+    <Route path="/agenda" element={<ContentSection title="日程安排"><p>{notice('日程后续通知')}</p><AgendaTables agenda={config.agenda}/></ContentSection>}/>
+    <Route path="/courses" element={<ContentSection title="课程介绍"><Courses/></ContentSection>}/>
+    <Route path="/register" element={<Account config={config} offline={preview} onSessionChange={setAuthenticated}/>}/>
+    <Route path="/account" element={<Account config={config} offline={preview} onSessionChange={setAuthenticated}/>}/>
+    <Route path="*" element={<section className="placeholder-page"><h2>页面不存在</h2><Link to="/">返回首页</Link></section>}/>
+   </Routes></Suspense></main>
+   <aside className="public-sidebar" aria-label="活动补充信息">{!accountRoute&&<Link className="registration-cta sidebar-cta" to={entry.to}>{entry.label}</Link>}{datesCard}</aside>
+  </div>
+  <MobileServiceDock entry={entry}>{datesCard}</MobileServiceDock>
+  <footer className="event-footer"><div className="event-container event-footer__grid">
+   <section><h2>{config.event.shortTitle}</h2><p>主办单位：{organizers.map(x=>x.name).join('、')}</p><p>{config.event.subtitle}</p></section>
+   <section><h2>联系咨询</h2>{[...new Set(config.contacts.map(x=>x.responsibility))].map(group=><div className="event-footer__contact" key={group}><strong>{group}</strong>{config.contacts.filter(x=>x.responsibility===group).map(x=><span key={x.name}>{x.name} {x.email||x.phone}</span>)}</div>)}</section>
+   <nav aria-label="页脚导航"><h2>快速入口</h2><Link to="/">活动首页</Link><Link to="/register">在线报名</Link><Link to="/fees">费用与发票</Link><Link to="/account">个人中心</Link><Link to="/privacy">报名信息使用说明</Link></nav>
+  </div><div className="event-container event-footer__legal"><span>© {config.event.startDate.slice(0,4)} {config.event.shortTitle}会务组</span></div></footer>
+ </div>;
+}
