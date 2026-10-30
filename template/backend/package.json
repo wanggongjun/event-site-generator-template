@@ -1,15 +1,14 @@
 {
   "name": "event-template-backend",
-  "version": "4.0.0",
+  "version": "5.0.0",
   "private": true,
   "type": "module",
   "engines": {
     "node": ">=24"
   },
   "scripts": {
-    "start": "node start.js",
-    "test": "node --test test/*.test.js",
-    "sync": "node sync.js"
+    "start": "node forum-start.js",
+    "test": "node --test test/template-runtime.test.js test/profile-auto-sync.test.js test/profile-hub.test.js test/forum-sso.test.js"
   },
   "dependencies": {
     "bcryptjs": "3.0.2",

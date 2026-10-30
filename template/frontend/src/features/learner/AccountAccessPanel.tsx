@@ -1,17 +1,20 @@
-import { useEffect, useState } from 'react'
-import { AuthApiError, loginStudent, normalizeAuthRetryAfterSeconds, registerStudent, resetStudentPassword, sendVerificationCode } from '../../api/auth-client'
+import { useEffect, useState, type ReactNode } from 'react'
+import { AuthApiError, checkStudentRegistration, loginStudentWithCode, loginStudent, normalizeAuthRetryAfterSeconds, registerStudent, resetStudentPassword, sendVerificationCode } from '../../api/auth-client'
 import { AuthActions, AuthCard, AuthField, AuthForm, AuthMessage, AuthPhoneField, useResendCountdown, validCode, validPassword, validPhone } from '../auth/AuthForm'
 
-export type AccountAccessMode = 'login' | 'register' | 'reset'
+export type AccountAccessMode = 'login' | 'register' | 'reset' | 'otp'
 
 const PASSWORD_LENGTH_ERROR = '密码长度须为8—72个字节。'
 const PASSWORD_LENGTH_HELP = '密码长度须为8—72个字节；中文及部分特殊字符可能占用多个字节，建议使用英文字母、数字和符号。'
 
-export function AccountAccessPanel({ initialMode = 'login', onAuthenticated }: {
+export function AccountAccessPanel({ initialMode = 'login', enableOtp = false, otpOnly = false, alternativeLogin, onAuthenticated }: {
+  enableOtp?: boolean
+  otpOnly?: boolean
+  alternativeLogin?: ReactNode
   initialMode?: AccountAccessMode
   onAuthenticated: (registered?: boolean) => void | Promise<void>
 }) {
-  const [mode, setMode] = useState<AccountAccessMode>(initialMode)
+  const [mode, setMode] = useState<AccountAccessMode>(otpOnly ? 'otp' : initialMode)
   const [step, setStep] = useState<1 | 2 | 3>(1)
   const [phone, setPhone] = useState('')
   const [code, setCode] = useState('')
@@ -20,10 +23,15 @@ export function AccountAccessPanel({ initialMode = 'login', onAuthenticated }: {
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
+  const [existingAccount, setExistingAccount] = useState<{ registeredAt?: string } | null>(null)
   const countdown = useResendCountdown()
   const retryCountdown = useResendCountdown()
 
   const handleError = (caught: unknown, fallback: string) => {
+    if (caught instanceof AuthApiError && caught.code === 'ACCOUNT_EXISTS') {
+      setExistingAccount({ registeredAt: caught.details?.registeredAt }); setPassword(''); setConfirmation(''); setMessage(''); setError('')
+      return
+    }
     if (caught instanceof AuthApiError && ['RATE_LIMITED', 'VERIFICATION_RATE_LIMITED', 'LOGIN_RATE_LIMITED'].includes(caught.code)) {
       const seconds = caught.retryAfterSeconds ?? normalizeAuthRetryAfterSeconds(undefined)
       retryCountdown.start(seconds)
@@ -33,9 +41,21 @@ export function AccountAccessPanel({ initialMode = 'login', onAuthenticated }: {
     setError(caught instanceof Error ? caught.message : fallback)
   }
 
-  useEffect(() => { setMode(initialMode); setStep(1); setError(''); setMessage('') }, [initialMode])
-  const switchMode = (next: AccountAccessMode) => { setMode(next); setStep(1); setCode(''); setPassword(''); setConfirmation(''); setError(''); setMessage('') }
-  const sendCode = async (purpose: 'register' | 'reset_password') => {
+  useEffect(() => { setMode(otpOnly ? 'otp' : initialMode); setStep(1); setError(''); setMessage(''); setExistingAccount(null) }, [initialMode, otpOnly])
+  const switchMode = (next: AccountAccessMode) => { setMode(next); setStep(1); setCode(''); setPassword(''); setConfirmation(''); setError(''); setMessage(''); setExistingAccount(null) }
+  const checkRegistration = async () => {
+    if (pending) return
+    if (!validCode(code)) { setError('请输入6位数字验证码'); return }
+    setPending(true); setError(''); setMessage('')
+    try {
+      const result = await checkStudentRegistration(phone, code)
+      if (result.data.registered) { setExistingAccount({ registeredAt: result.data.registeredAt }); setPassword(''); setConfirmation('') }
+      else if (result.data.registered === false) setStep(3)
+      else throw new Error('账号信息暂时无法确认，请重试')
+    } catch (caught) { handleError(caught, '账号信息暂时无法确认，请重试') }
+    finally { setPending(false) }
+  }
+  const sendCode = async (purpose: 'register' | 'reset_password' | 'login') => {
     if (pending) return
     if (!validPhone(phone)) { setError('请输入有效的中国大陆手机号'); return }
     setPending(true); setError(''); setMessage('')
@@ -57,6 +77,16 @@ export function AccountAccessPanel({ initialMode = 'login', onAuthenticated }: {
     try { await onAuthenticated() }
     catch { setError('登录成功，个人中心暂时无法加载。请稍后刷新页面。') }
     finally { setPending(false) }
+  }
+  const loginWithCode = async () => {
+    if(pending) return
+    if(!validPhone(phone)||!validCode(code)){setError('请输入有效手机号和6位数字验证码');return}
+    setPending(true);setError('');setMessage('')
+    try { await loginStudentWithCode(phone,code) }
+    catch(caught){handleError(caught,'登录失败，请重试');setPending(false);return}
+    try { await onAuthenticated() }
+    catch { setError('已登录，个人中心暂时无法加载，请刷新重试。') }
+    finally {setPending(false);setCode('')}
   }
   const createAccount = async () => {
     if (!validCode(code)) { setError('请输入6位数字验证码'); return }
@@ -80,18 +110,27 @@ export function AccountAccessPanel({ initialMode = 'login', onAuthenticated }: {
     finally { setPending(false) }
   }
 
-  const title = mode === 'login' ? '登录个人中心' : mode === 'register' ? '注册账号' : '重置密码'
+  const title = mode === 'otp' ? '验证码登录' : mode === 'login' ? '登录个人中心' : mode === 'register' ? '注册账号' : '重置密码'
+  const registrationDate = existingAccount?.registeredAt ? new Date(existingAccount.registeredAt) : null
+  const registrationTime = registrationDate && Number.isFinite(registrationDate.getTime()) ? registrationDate.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }) : null
   return <AuthCard title={title}>
-    <div className="account-access-switch" role="tablist" aria-label="账号操作">
-      <button aria-selected={mode === 'login'} onClick={() => switchMode('login')} role="tab" type="button">登录</button>
-      <button aria-selected={mode === 'register'} onClick={() => switchMode('register')} role="tab" type="button">注册账号</button>
-      <button aria-selected={mode === 'reset'} onClick={() => switchMode('reset')} role="tab" type="button">忘记密码</button>
-    </div>
-    <AuthForm onSubmit={(event) => {
+    {!otpOnly && <div className={`account-access-switch${enableOtp ? ' account-access-switch--otp' : ''}`} role="tablist" aria-label="账号操作">
+      <button disabled={pending} aria-selected={mode === 'login'} onClick={() => switchMode('login')} role="tab" type="button">{enableOtp?'密码登录':'登录'}</button>
+      {enableOtp&&<button disabled={pending} aria-selected={mode==='otp'} onClick={()=>switchMode('otp')} role="tab" type="button">验证码登录</button>}
+      <button disabled={pending} aria-selected={mode === 'register'} onClick={() => switchMode('register')} role="tab" type="button">注册账号</button>
+      <button disabled={pending} aria-selected={mode === 'reset'} onClick={() => switchMode('reset')} role="tab" type="button">忘记密码</button>
+    </div>}
+    {mode==='otp'&&<p className="auth-help">未注册的手机号验证后将自动创建账号。</p>}
+    {mode === 'register' && existingAccount ? <div>
+      <AuthMessage kind="status">已注册，请直接登录</AuthMessage>
+      {registrationTime && <p className="auth-help">账号注册时间：<time dateTime={existingAccount.registeredAt}>{registrationTime}</time></p>}
+      <AuthActions><button type="button" onClick={() => switchMode('login')}>前往登录</button><button type="button" onClick={() => { switchMode('register'); setPhone('') }}>更换手机号</button></AuthActions>
+    </div> : <AuthForm onSubmit={(event) => {
       event.preventDefault()
       if (mode === 'login') void login()
+      else if(mode==='otp') {if(step===1) void sendCode('login');else void loginWithCode()}
       else if (step === 1) void sendCode(mode === 'register' ? 'register' : 'reset_password')
-      else if (step === 2 && mode === 'register') { if (validCode(code)) { setError(''); setStep(3) } else setError('请输入6位数字验证码') }
+      else if (step === 2 && mode === 'register') void checkRegistration()
       else if (mode === 'register') void createAccount()
       else void resetPassword()
     }}>
@@ -103,7 +142,8 @@ export function AccountAccessPanel({ initialMode = 'login', onAuthenticated }: {
       {mode !== 'login' && step === 1 ? <AuthActions><button disabled={pending || retryCountdown.seconds > 0} type="submit">{retryCountdown.seconds > 0 ? `请稍后重试（${retryCountdown.seconds}秒）` : pending ? '正在发送' : '获取验证码'}</button></AuthActions> : null}
       {mode !== 'login' && step >= 2 ? <>
         <AuthField label="验证码" autoComplete="one-time-code" inputMode="numeric" maxLength={6} value={code} onChange={(event) => setCode(event.target.value)} />
-        {mode === 'register' && step === 2 ? <AuthActions><button disabled={pending || countdown.seconds > 0} onClick={() => void sendCode('register')} type="button">{countdown.seconds > 0 ? `重新发送（${countdown.seconds}秒）` : '重新发送'}</button><button type="submit">下一步</button></AuthActions> : null}
+        {mode==='otp'&&<AuthActions><button disabled={pending||countdown.seconds>0||retryCountdown.seconds>0} type="button" onClick={()=>void sendCode('login')}>{countdown.seconds>0?`重新发送（${countdown.seconds}秒）`:'重新发送'}</button><button type="button" disabled={pending} onClick={()=>{setStep(1);setCode('');setError('');setMessage('')}}>更换手机号</button><button type="submit" disabled={pending||retryCountdown.seconds>0}>{pending?'正在登录':'登录'}</button></AuthActions>}
+        {mode === 'register' && step === 2 ? <AuthActions><button disabled={pending || countdown.seconds > 0 || retryCountdown.seconds > 0} onClick={() => void sendCode('register')} type="button">{countdown.seconds > 0 ? `重新发送（${countdown.seconds}秒）` : '重新发送'}</button><button disabled={pending || retryCountdown.seconds > 0} type="submit">{pending ? '正在验证' : '下一步'}</button></AuthActions> : null}
         {mode === 'reset' || step === 3 ? <>
           <AuthField label={mode === 'reset' ? '新密码' : '设置密码'} autoComplete="new-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
           <AuthField label={mode === 'reset' ? '确认新密码' : '确认密码'} autoComplete="new-password" type="password" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} />
@@ -113,7 +153,8 @@ export function AccountAccessPanel({ initialMode = 'login', onAuthenticated }: {
       </> : null}
       {error ? <AuthMessage kind="error">{error}</AuthMessage> : null}
       {message ? <AuthMessage kind="status">{message}</AuthMessage> : null}
-    </AuthForm>
+    </AuthForm>}
+    {alternativeLogin}
   </AuthCard>
 }
 

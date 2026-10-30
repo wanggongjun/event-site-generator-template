@@ -1,53 +1,36 @@
-# v4 验证与未验项目
+# v5 验收结果与边界
 
-2026-10-07。基于GitHub main `9d6f00c54b77aeb1a6aa78c5d6080df316ab386c`，改动前94个文件内容与Git模式逐blob一致，工作树为 `7cf62a9ce7ce23ae474bb2b3823cbe17fb403aaa`。保留用户README的panshi命名、v3真实服务默认及既有业务；版本4.0.0。此版本只发布模板源码，不部署生产、不修改真实飞书；当前旧包移除，历史提交保留，不以ZIP上传为交付前提。
+2026-10-30，Windows、Node 24.13.0、Python，独立分支 review/template-recovery-20261030。模板基线 e8b79be，视觉及成熟业务实现参考正式论坛 a01dff8。本轮没有修改或部署正式论坛。
 
-## 最终代码已验证
+## 已验证
 
-执行环境为Linux、非root用户、Node24.19.0、锁定embedded-postgres16.14.0-beta.17（实际PG16）。以下通过均不表示Windows实机或真实外部服务通过。
+- 生成器回归：46 项执行，44 项通过、2 项跳过。跳过原因为本机无符号链接创建权限、没有 LibreOffice 分页渲染工具。
+- 两个全新实例：默认单类别和自定义多类别，分别安装依赖、构建和执行前端状态回归，均通过。多类别使用 paper/demo，证明类别不是硬编码 academic/flash。
+- 后端：两实例各 27 项通过，包括报名审核、待审报名可以投稿、修改后重新审核、历史版本、过期审核、重试去重、归属隔离、重启持久化、总库读写、SSO、OSS 环境隔离和附件不存入 SQLite 正文。
+- 前端：待审/通过状态、已提交快照保留、提交中与长时间等待提示、防重复提交、提交结果恢复、弹窗、单/多类别展示。
+- Edge 浏览器：真实生成页面连接本机隔离测试后端；1440×1000、900×900、390×844 检查首页、报名、投稿、个人中心、账号设置，无横向溢出；桌面及方形保留右侧日期，手机使用底部玻璃抽屉。
+- 浏览器实际提交报名、关闭结果弹窗并刷新，待审核提示仍在；实际提交和修改自定义实践类别；公开下载走本机白名单接口；桌面/手机登录页、手机展开玻璃抽屉已截图检查。
+- Skill 格式校验、git diff --check、Bash 语法和部署工作流 YAML/分支目标静态检查通过。
 
-- Python生成/引用/横幅绑定/打包一致性：42/42
-- 新生成消费实例独立npm ci，production build成功
-- 新生成消费实例后端全量：73/73，无跳过；其中新增PG测试10项，含Windows中文/空格exe与目录的无shell参数mock、退出等待/超时、PID保护、已退出进程、失败保留、禁止非持久化与非法端口、真实PG三次重启及启动失败恢复、重复stop与连接池关闭一次
-- POSIX非秘密IDs文件0600通过；所有平台同一内容/无密钥/白名单/秘密env拒覆盖测试继续执行。Windows分支不再将mode当ACL；NTFS ACL实机未验
-- React/jsdom状态与SSR回归：16/16；六页渲染及DOM/本地链接检查通过，公开页面没有模拟验证码、内部诊断或准备度提示
-- 新生成实例完整业务SIGTERM/SIGINT → 重新生成 → 重启3周期通过，账号、投稿补料轮次、私有附件、录用与去重参会资格保持
-- Windows自动回归脚本的完整受控IPC流程在临时Linux副本验证通过：三次重启、重复关闭、账户/资料/附件/二审/资格保持，以及配置错误、loopback限制、HTTP端口占用的非零失败清理。原脚本在Linux运行明确SKIP，不计Windows实机通过
-- 独立审核另19项定向验证通过，包含Linux SIGTERM/SIGINT、HTTP占用失败code1、未完成HTTP请求的SIGINT收尾、默认win32→windows-x64模块解析与参数mock、已退出子进程残留PID保护
-- git diff --check、本地文档链接及生成实例包含同一修复文件通过
+浏览器证据位于回收工作区 audit/screenshots，主矩阵为 audit/browser-results.json。测试身份、飞书和 OSS 均为受控 fixture；登录页使用未登录响应检查布局，没有发送真实短信。
 
-## 未验与边界
+## 未验证，不算正式接入通过
 
-- Windows本机PG进程、真实PowerShell/CMD Ctrl+C、NTFS ACL未验；一键脚本是留给Windows执行者的验证入口，不是实测证明
-- 没有真实飞书App Secret/目标base及权限，真实建表、记录写入、附件上传、工作人员审核与问答回读未验
-- 真实短信投递、签名模板、HTTPS Cookie与生产部署未验；mock/check通过不能写完整生产已部署
-- 桌面/手机真实浏览器视觉、触控、表单操作未验，SSR/build/jsdom不替代浏览器验收
-- 生产备份恢复与Word跨平台渲染未验；本地重启保留不等于灾备恢复通过
+- 本轮没有新建真实活动的认证/总库客户端、飞书表、OSS 桶或部署资源；真实短信、SSO 跳转、总库写入、飞书审核及 OSS 上传下载仍需在新活动隔离环境验收。
+- Linux/systemd/Nginx/GitHub Actions 仅准备了脚本和配置说明，未执行远程部署、故障回滚或灾备恢复。
+- 浏览器为 Edge 桌面与手机尺寸模拟，不是手机触控真机或 Safari 兼容性专项测试。
+- Word 生成和内容检查通过；Word 分页视觉未验，PNG 物料缺少栅格化工具未生成，SVG 已生成。
+- 构建存在主 JS 包约 625 KB（gzip 142 KB）的体积提示；未开展性能压测。
+- v4 后端保留作迁移参考，其旧测试不作为 v5 实际运行链路的验收结果。v5 使用 forum-start.js 与报名/投稿两表。
 
 ## 复跑
 
-按README建立项目venv，在模板根：
+在源码根目录设置 PYTHONUTF8=1，执行：
 
 ```sh
-.venv/bin/python -m unittest discover -s tests -p 'test_*.py'
-.venv/bin/python scripts/generate.py input/fictional-conference.xlsx --output /absolute/path/to/new-instance
+python -m unittest discover -s tests -p "test_*.py"
+python scripts/generate.py input/fictional-conference.xlsx --output generated/recovery-single
+python scripts/generate.py input/recovery-multi/event.xlsx --output generated/recovery-multi
 ```
 
-Windows替换Python路径为 `.\.venv\Scripts\python.exe`。进入新实例：
-
-```sh
-npm ci
-npm run build
-npm test
-npm run test:frontend
-npm run test:pages
-npm run test:windows
-```
-
-最后一条仅Windows实机执行回归；其他平台明确SKIP。在模板根跑 `tests/validate_public_pages.py <实例>` 检查测试页面，本地QA输出不进成品包。Linux完整生命周期需新fixture、已安装实例及源模板Python：
-
-```sh
-node template/backend/test/shutdown-lifecycle.mjs /absolute/path/to/new-fixture /absolute/path/to/installed-instance .venv/bin/python
-```
-
-Windows启停、端口、数据目录和脚本边界见 [Windows运行说明](windows.md)。真实接入及预发布验收按 [接入与运行](deployment-handoff.md)。
+进入任一生成实例执行 npm ci、npm run build、npm test、npm run test:frontend、npm run dev:fixture。端口默认 3420；第二实例可设置 PORT=3421。fixture 仅监听本机、不访问真实短信/资料总库，停止后不保留测试业务数据。

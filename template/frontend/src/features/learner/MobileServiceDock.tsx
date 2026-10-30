@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useId,
   useEffect,
   useRef,
   useState,
@@ -8,7 +9,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { MobileLiquidGlassBar } from './MobileLiquidGlassBar'
+import { MobileLiquidGlassBar, LiquidGlassSurface } from './MobileLiquidGlassBar'
 import {
   clampDrawerY,
   drawerProgress,
@@ -36,6 +37,9 @@ export function MobileServiceDock({ children, entry }: { children: ReactNode, en
   const location = useLocation()
   const [open, setOpen] = useState(false)
   const [dragging, setDragging] = useState(false)
+  const shadeId = `dock-shade-${useId().replace(/:/g, '')}`
+  const drawerHoleRef = useRef<SVGRectElement | null>(null)
+  const barHoleRef = useRef<SVGRectElement | null>(null)
   const dockRef = useRef<HTMLDivElement | null>(null)
   const triggerRef = useRef<HTMLButtonElement | null>(null)
   const drawerRef = useRef<HTMLElement | null>(null)
@@ -94,6 +98,39 @@ export function MobileServiceDock({ children, entry }: { children: ReactNode, en
     }
   }, [])
 
+  // Follow the actual CSS transition and drag position, keeping both glass surfaces clear.
+  useEffect(() => {
+    if (typeof requestAnimationFrame !== 'function') return
+    let frame = 0
+    let until = performance.now() + 500
+    const update = () => {
+      const surfaces = [[drawerRef.current, drawerHoleRef.current],
+        [dockRef.current?.querySelector('.mobile-service-glass-live'), barHoleRef.current]] as const
+      for (const [surface, hole] of surfaces) {
+        if (!surface || !hole) continue
+        const rect = surface.getBoundingClientRect()
+        hole.setAttribute('x', String(rect.x)); hole.setAttribute('y', String(rect.y))
+        hole.setAttribute('width', String(rect.width)); hole.setAttribute('height', String(rect.height))
+        hole.setAttribute('rx', String(Math.min(40, rect.width / 2, rect.height / 2)))
+      }
+      if (dragging || performance.now() < until) frame = requestAnimationFrame(update)
+    }
+    const refresh = () => { cancelAnimationFrame(frame); until = performance.now() + 500; update() }
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(refresh)
+    if (drawerRef.current) observer?.observe(drawerRef.current)
+    if (dockRef.current) observer?.observe(dockRef.current)
+    window.addEventListener('resize', refresh)
+    window.visualViewport?.addEventListener('resize', refresh)
+    window.visualViewport?.addEventListener('scroll', refresh)
+    refresh()
+    return () => {
+      cancelAnimationFrame(frame); observer?.disconnect()
+      window.removeEventListener('resize', refresh)
+      window.visualViewport?.removeEventListener('resize', refresh)
+      window.visualViewport?.removeEventListener('scroll', refresh)
+    }
+  }, [open, dragging])
+
   const onPointerDown = (event: ReactPointerEvent<HTMLElement>) => {
     if (event.button !== 0) return
     const travel = measureTravel()
@@ -148,7 +185,9 @@ export function MobileServiceDock({ children, entry }: { children: ReactNode, en
     '--mobile-drawer-progress': 0,
   }
 
-  return <div
+  return <>
+    <div
+    data-handle-style="soft"
     aria-label="移动端活动服务"
     className={`mobile-service-dock${open ? ' is-open' : ''}${dragging ? ' is-dragging' : ''}`}
     ref={dockRef}
@@ -162,7 +201,16 @@ export function MobileServiceDock({ children, entry }: { children: ReactNode, en
       onClick={() => settle('closed')}
       tabIndex={open ? 0 : -1}
       type="button"
-    />
+    >
+      <svg className="mobile-service-shade" width="100%" height="100%" aria-hidden="true">
+        <defs><mask id={shadeId} maskUnits="userSpaceOnUse" x="0" y="0" width="100%" height="100%" style={{maskType:'luminance'}}>
+          <rect width="100%" height="100%" fill="white"/>
+          <rect ref={drawerHoleRef} fill="black"/>
+          <rect ref={barHoleRef} fill="black"/>
+        </mask></defs>
+        <rect width="100%" height="100%" fill="#092a42" mask={`url(#${shadeId})`}/>
+      </svg>
+    </button>
     <section
       aria-hidden={hidden}
       aria-label={hidden ? undefined : '活动信息'}
@@ -173,6 +221,7 @@ export function MobileServiceDock({ children, entry }: { children: ReactNode, en
       role="dialog"
       tabIndex={open ? -1 : undefined}
     >
+      <LiquidGlassSurface/>
       <div
         aria-label="拖动活动信息抽屉"
         className="mobile-service-drawer__control"
@@ -214,6 +263,6 @@ export function MobileServiceDock({ children, entry }: { children: ReactNode, en
         <Link className="mobile-service-bar__entry" to={entry.to}>{entry.label}</Link>
       </div>
     </MobileLiquidGlassBar>
-  </div>
+  </div></>
 }
 

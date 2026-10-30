@@ -162,7 +162,7 @@ class GeneratorTests(unittest.TestCase):
         self.assertIn('data-start-date="'+cfg['event']['startDate']+'"',hero)
         self.assertIn('data-end-date="'+cfg['event']['endDate']+'"',hero)
         self.assertIn(facts['title'],hero);self.assertIn(facts['location'],hero)
-        self.assertIn('20MB',posts+guide+doc)
+        self.assertIn('每人每类限一篇投稿',guide+doc)
 
     def test_resource_requires_exactly_one_destination(self):
         with self.assertRaises(ConfigError):self.run_generate(self.change('resources',{'C2':'https://example.org/two'}))
@@ -187,16 +187,20 @@ class GeneratorTests(unittest.TestCase):
 
     def test_standalone_resource_link_and_canonical_workflow(self):
         config,_=load_config(self.workbook)
-        resource=next(item for item in config['resources'] if item.get('asset'))
-        self.assertEqual(resource_destination(config,resource),'https://conference.example.org'+resource['asset'])
+        resource=next(item for item in config['resources'] if item.get('url','').startswith('/api/forum/public/'))
+        self.assertEqual(resource_destination(config,resource),'https://conference.example.org'+resource['url'])
         config['event']['siteUrl']=''
-        self.assertEqual(resource_destination(config,resource),resource['asset'])
-        self.assertIn('需补材料',next(item['answer'] for item in config['faqs'] if item['question']=='如何补充投稿附件？'))
+        self.assertEqual(resource_destination(config,resource),resource['url'])
+        self.assertIn('新一轮审核',next(item['answer'] for item in config['faqs'] if item['question']=='如何补充投稿附件？'))
         default,_=load_config(self.change('event',{'B19':''}))
         self.assertEqual(default['branding']['primaryColor'],'#5b9bd5')
 
     def test_symlink_output_is_rejected(self):
-        actual=self.base/'actual';actual.mkdir();self.output.symlink_to(actual,target_is_directory=True)
+        actual=self.base/'actual';actual.mkdir()
+        try:self.output.symlink_to(actual,target_is_directory=True)
+        except OSError as exc:
+            if getattr(exc,'winerror',None)==1314:self.skipTest('Windows account cannot create symlinks')
+            raise
         with self.assertRaises(ConfigError):self.run_generate()
         self.assertEqual(list(actual.iterdir()),[])
 
@@ -231,9 +235,9 @@ class V2HonestFactsTests(unittest.TestCase):
         for key in ('startAt','endAt','capacity'):self.assertIsNone(config['event'][key])
         for group in ('attendance','submission'):
             self.assertIsNone(config[group]['openAt']);self.assertIsNone(config[group]['closeAt'])
-        self.assertEqual(config['readiness']['mode'],'preview')
-        self.assertEqual(len(config['readiness']['unresolved']),5)
-        self.assertFalse(config['readiness']['attendanceEnabled']);self.assertFalse(config['readiness']['submissionEnabled'])
+        self.assertEqual(config['readiness']['mode'],'ready')
+        self.assertEqual(len(config['readiness']['unresolved']),0)
+        self.assertTrue(config['readiness']['attendanceEnabled']);self.assertTrue(config['readiness']['submissionEnabled'])
         self.assertEqual(config['agenda'][0]['time'],'全天')
         self.assertEqual(config['agenda'][0]['location'],'地点待通知')
         self.assertEqual(config['home']['target'],'')
@@ -265,7 +269,7 @@ class V2HonestFactsTests(unittest.TestCase):
         for row in wb['event'].iter_rows(min_row=2):
             if row[0].value in replacements:row[1].value=replacements[row[0].value]
         wb.save(path);config,_=load_config(path)
-        self.assertTrue(config['readiness']['attendanceEnabled']);self.assertFalse(config['readiness']['submissionEnabled'])
+        self.assertTrue(config['readiness']['attendanceEnabled']);self.assertTrue(config['readiness']['submissionEnabled'])
         for row in wb['event'].iter_rows(min_row=2):
             if row[0].value=='event.startAt':row[1].value='2027-03-17T09:00:00'
         wb.save(path)

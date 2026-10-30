@@ -24,7 +24,7 @@ from zipfile import ZipFile, ZIP_DEFLATED
 import openpyxl
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = '4.0.0'
+VERSION = '5.0.0'
 MAX_WORKBOOK_BYTES = 10 * 1024 * 1024
 MAX_ASSET_BYTES = 20 * 1024 * 1024
 SAFE_ASSET_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.webp', '.pdf', '.docx', '.pptx'}
@@ -36,12 +36,17 @@ EVENT_FIELDS = {
  'event.startAt': ('datetime', False), 'event.endAt': ('datetime', False),
  'event.timezone': ('str', True), 'event.location': ('str', True), 'event.capacity': ('positive-int', False),
  'event.language': ('str', False), 'event.siteUrl': ('url', False), 'event.recordingsEnabled': ('bool', False),
+ 'event.workflow': ('str', False), 'event.timeWindowPolicy': ('str', False),
+ 'attendance.autoClose': ('bool', False), 'attendance.enforceCapacity': ('bool', False),
+ 'submission.autoClose': ('bool', False), 'submission.perTrackLimit': ('positive-int', False), 'submission.displayDeadline': ('str', False),
+ 'branding.technicalSupport': ('str', False), 'branding.backgroundImage': ('asset', False), 'branding.bannerMode': ('str', False),
  'attendance.openAt': ('datetime', False), 'attendance.closeAt': ('datetime', False),
  'submission.openAt': ('datetime', False), 'submission.closeAt': ('datetime', False), 'submission.supplementCloseAt': ('datetime', False),
  'branding.primaryColor': ('color', False), 'branding.seriesText': ('str', False), 'branding.bannerTitle': ('str', False), 'branding.heroImage': ('asset', False), 'branding.logo': ('asset', False),
  'home.target': ('str', False), 'travel.address': ('str', True), 'travel.mapUrl': ('url', False),
 }
 COLLECTIONS = {
+ 'tracks': (['key','title','form','description','materials','subtypes','evidenceRequired'], ['key','title','form']),
  'intro': (['text'], ['text']),
  'brandmarks': (['label', 'asset'], ['label', 'asset']),
  'features': (['title', 'description'], ['title', 'description']),
@@ -150,15 +155,8 @@ def parse_date(value, label):
         fail(f'{label}: 需要 YYYY-MM-DD 日期')
 
 def readiness(config):
-    """Configuration readiness is independent of the current clock and sign-in."""
-    unresolved = []
-    for group, field in [('event', 'capacity'), ('attendance', 'openAt'), ('attendance', 'closeAt'), ('submission', 'openAt'), ('submission', 'closeAt')]:
-        if config[group].get(field) is None:
-            unresolved.append({'key': f'{group}.{field}', 'reason': '未提供会务事实，需主办方确认'})
-    capacity = config['event'].get('capacity') is not None
-    enabled = lambda group: capacity and all(config[group].get(field) is not None for field in ('openAt', 'closeAt'))
-    return {'mode': 'preview' if unresolved else 'ready', 'unresolved': unresolved,
-            'attendanceEnabled': enabled('attendance'), 'submissionEnabled': enabled('submission')}
+    return {'mode':'ready','unresolved':[], 'attendanceEnabled':True,'submissionEnabled':True}
+
 
 def safe_asset(workbook_dir, value, label):
     v = plain(value, label)
@@ -293,6 +291,16 @@ def load_config(workbook_path):
         group, name = key.split('.')
         config[group][name] = val
     e = config['event']
+    e['workflow']='forum'
+    e.setdefault('timeWindowPolicy','unrestricted')
+    for group in ('attendance','submission'):
+        config[group].setdefault('autoClose',False)
+    config['attendance'].setdefault('enforceCapacity',False)
+    config['submission'].setdefault('perTrackLimit',1)
+    if config['submission']['perTrackLimit']!=1:fail('submission.perTrackLimit: 本版每人每类限一篇')
+    config['branding'].setdefault('bannerMode','background')
+    if config['branding']['bannerMode'] not in ('background','poster'):
+        fail('branding.bannerMode: 仅支持 background 或 poster')
     if not re.fullmatch(r'[a-z0-9]+(?:-[a-z0-9]+)*', e['slug']) or len(e['slug']) > 64:
         fail('event.slug: 需要不超过 64 字符的小写字母、数字和单连字符')
     e.setdefault('subtitle', '')
@@ -379,7 +387,7 @@ def load_config(workbook_path):
                     if not v:
                         continue
                     if field == 'url':
-                        v = safe_url(v, f'{name}!{field}{row}')
+                        v = v if name == 'resources' and v == '/travel' else safe_url(v, f'{name}!{field}{row}')
                     elif field == 'asset':
                         if name == 'brandmarks' and Path(v).suffix.lower() not in ('.png','.jpg','.jpeg','.webp'):
                             fail(f'brandmarks!{row}: 品牌标识需要图片素材')
@@ -433,6 +441,21 @@ def load_config(workbook_path):
             config['travel']['directions'] = result
         else:
             config[name] = result
+    config['tracks'] = config.get('tracks') or [{'key':'academic','title':'学术报告','form':'academic','description':'','materials':'Word 格式摘要','subtypes':[],'evidenceRequired':False}]
+    for track in config['tracks']:
+        if not re.fullmatch(r'[a-z][a-z0-9-]{0,31}',track['key']) or track['form'] not in ('academic','practice'):
+            fail('tracks: key 须为小写标识，form 须为 academic 或 practice')
+        if isinstance(track.get('subtypes'),str):
+            track['subtypes']=[x.strip() for x in track['subtypes'].split('|') if x.strip()]
+        track.setdefault('subtypes',[])
+        track['evidenceRequired']=parse_bool(track.get('evidenceRequired',False),'tracks.evidenceRequired')
+        track.setdefault('description','')
+        track.setdefault('materials','Word 格式摘要' if track['form']=='academic' else '相关链接或附件')
+    for group in ('attendance','submission'):
+        if config[group]['autoClose'] and not config[group].get('closeAt'):
+            fail(group+'.autoClose: 自动截止必须提供准确截止时间')
+    if config['attendance']['enforceCapacity'] and not e.get('capacity'):
+        fail('attendance.enforceCapacity: 必须提供真实容量')
     # Group IDs preserve source merged cells; they must never hide a different
     # fact or join non-adjacent rows in the same date/location block.
     for field, metadata in [('time','timeGroup'),('title','topicGroup'),('speaker','speakerGroup'),('chair','chairGroup'),('location','locationGroup')]:
@@ -461,11 +484,30 @@ def load_config(workbook_path):
         fail(str(exc))
     apply_hero_binding(config, assets, path)
     config['source'] = {'schemaVersion': VERSION, 'workbookSha256': digest(raw)}
+    config['publicFiles']=[]
+    for resource in config['resources']:
+        asset=resource.get('asset')
+        if not asset or resource.get('type')=='map':continue
+        raw=assets[asset.removeprefix('/')];filename=Path(asset).name;sha=digest(raw)
+        key='public/'+sha+'/'+filename
+        source='materials/oss-upload/'+sha+'/'+filename
+        resource.pop('asset');resource['url']='/api/forum/public/'+sha
+        config['publicFiles'].append({'id':sha,'key':key,'name':filename,'sha256':sha,'source':source,'originalAsset':asset})
     wb.close()
     return config, assets
 
 def event_facts(config):
     e = config['event']
+    e['workflow']='forum'
+    e.setdefault('timeWindowPolicy','unrestricted')
+    for group in ('attendance','submission'):
+        config[group].setdefault('autoClose',False)
+    config['attendance'].setdefault('enforceCapacity',False)
+    config['submission'].setdefault('perTrackLimit',1)
+    if config['submission']['perTrackLimit']!=1:fail('submission.perTrackLimit: 本版每人每类限一篇')
+    config['branding'].setdefault('bannerMode','background')
+    if config['branding']['bannerMode'] not in ('background','poster'):
+        fail('branding.bannerMode: 仅支持 background 或 poster')
     start, end = (date.fromisoformat(e[k]) for k in ('startDate', 'endDate'))
     date_text = f'{start:%Y年%m月%d日}' if start == end else f'{start:%Y年%m月%d日}至{end:%Y年%m月%d日}'
     close_text = lambda group: datetime.fromisoformat(config[group]['closeAt']).strftime('%Y年%m月%d日 %H:%M') if config[group].get('closeAt') else None
@@ -494,7 +536,7 @@ def template_files(template):
     result=[]
     for p in sorted(template.rglob('*')):
         rel=p.relative_to(template)
-        if any(part in FORBIDDEN_SEGMENTS or part == 'dist' or (part.startswith('.') and part not in ('.env.example','.gitignore','.npmrc')) for part in rel.parts):
+        if any(part in FORBIDDEN_SEGMENTS or part == 'dist' or (part.startswith('.') and part not in ('.env.example','.gitignore','.npmrc','.github')) for part in rel.parts):
             continue
         if p.is_symlink():
             fail(f'template: 禁止符号链接 {rel}')
@@ -526,7 +568,7 @@ def existing_output(output,slug):
 
 def public_config(config):
     """The public product contains event content, never generation/connection diagnostics."""
-    result = {key: value for key, value in config.items() if key not in {'source', 'sourceNotes', 'readiness', 'sync'}}
+    result = {key: value for key, value in config.items() if key not in {'source', 'sourceNotes', 'readiness', 'sync', 'publicFiles'}}
     result['branding'] = {key: value for key, value in config.get('branding', {}).items() if key not in {'heroWarning', 'heroBinding', 'heroSourceImage'}}
     return result
 
@@ -552,6 +594,10 @@ def generate(workbook_path, output=None, template=None):
         stage=Path(tmp)
         for rel,data in files:
             p=stage/rel;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(data)
+        public_assets={f['originalAsset']:f for f in config.get('publicFiles',[])}
+        for asset,file in public_assets.items():
+            local=stage/file['source'];local.parent.mkdir(parents=True,exist_ok=True)
+            local.write_bytes(assets[asset.removeprefix('/')])
         config_bytes=(json.dumps(config,ensure_ascii=False,indent=2,sort_keys=True)+'\n').encode('utf-8')
         (stage/'config.json').write_bytes(config_bytes)
         public_bytes=(json.dumps(public_config(config),ensure_ascii=False,indent=2,sort_keys=True)+'\n').encode('utf-8')
@@ -559,6 +605,7 @@ def generate(workbook_path, output=None, template=None):
             p=stage/rel;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(public_bytes)
         assets['assets/hero.svg']=hero_svg(config,assets).encode('utf-8')
         for rel,data in assets.items():
+            if '/'+rel in public_assets:continue
             p=stage/'frontend/public'/rel;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(data)
         hero_path=stage/'frontend/public'/config['branding']['heroImage'].removeprefix('/')
         png=write_materials(stage,config,hero_path=hero_path)

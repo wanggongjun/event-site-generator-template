@@ -2,7 +2,7 @@
 """Package one generated application; never include business data or runtime secrets."""
 from pathlib import Path, PurePosixPath
 import argparse, json, shutil, zipfile, hashlib
-BLOCK={'data','uploads','node_modules','.npm-cache','.cache','.venv','test-evidence','offline-preview','.page-test-build','.preview-build','.frontend-test-build','.git','__pycache__'}
+BLOCK={'.forum-test-build','data','uploads','node_modules','.npm-cache','.cache','.venv','test-evidence','offline-preview','.page-test-build','.preview-build','.frontend-test-build','.git','__pycache__'}
 def main():
  p=argparse.ArgumentParser(description='打包生成实例、物料和可选只读输入快照，排除业务数据。')
  p.add_argument('--instance',type=Path,required=True);p.add_argument('--destination',type=Path,required=True);p.add_argument('--input',type=Path);p.add_argument('--zip',type=Path);a=p.parse_args();app=a.instance.resolve();dest=a.destination.absolute()
@@ -32,7 +32,8 @@ def main():
   derived=(json.dumps(cfg,ensure_ascii=False,indent=2,sort_keys=True)+'\n').encode('utf8')
   if hashlib.sha256(derived).hexdigest()!=m.get('configSha256'):p.error('派生配置或横幅绑定已改变，请先重新生成后再打包')
   for url,data in assets.items():
-   if hashlib.sha256(data).hexdigest()!=m.get('sha256',{}).get('frontend/public/'+url):p.error('公共素材已改变，请先重新生成后再打包')
+   target=next((f['source'] for f in cfg.get('publicFiles',[]) if f['originalAsset']=='/'+url),'frontend/public/'+url)
+   if hashlib.sha256(data).hexdigest()!=m.get('sha256',{}).get(target):p.error('公共素材已改变，请先重新生成后再打包')
   snapshot=[(Path('source-input/event.xlsx'),a.input.read_bytes())]
   from hero_binding import binding_path
   hero_source=cfg['branding'].get('heroSourceImage')

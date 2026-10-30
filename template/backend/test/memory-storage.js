@@ -1,0 +1,1 @@
+export function memoryStorage(){const files=new Map();return {async put(k,b){files.set(k,Buffer.from(b));},async get(k){if(!files.has(k))throw Error('Missing object');return Buffer.from(files.get(k));}};}

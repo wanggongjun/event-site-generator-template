@@ -1,6 +1,6 @@
 {
   "name": "generated-event-instance",
-  "version": "4.0.0",
+  "version": "5.0.0",
   "private": true,
   "type": "module",
   "workspaces": [
@@ -12,15 +12,15 @@
   },
   "scripts": {
     "build": "npm run build --workspace frontend",
-    "start": "node backend/start.js",
-    "test": "npm run test --workspace backend",
-    "test:frontend": "npm run test:state --workspace frontend",
-    "dev:simulation": "node backend/start.js --simulation",
-    "dev:tools": "node backend/development/dev-simulation.js",
-    "feishu:plan": "node backend/feishu-init.js --plan",
-    "feishu:apply": "node backend/feishu-init.js --apply",
-    "check:integration": "node backend/check.js",
+    "start": "node backend/forum-start.js",
+    "test": "node --test backend/test/template-runtime.test.js backend/test/profile-auto-sync.test.js backend/test/profile-hub.test.js backend/test/forum-sso.test.js",
+    "test:frontend": "npm run test:forum --workspace frontend",
+    "feishu:plan": "node backend/forum-init.js --plan",
+    "feishu:apply": "node backend/forum-init.js --apply",
+    "check:integration": "node backend/forum-check.js",
     "test:pages": "npm run test:pages --workspace frontend && node frontend/test/export-pages.mjs .",
-    "test:windows": "node backend/test/windows-regression.mjs"
+    "test:windows": "node backend/test/windows-regression.mjs",
+    "preview": "node backend/forum-start.js --preview",
+    "dev:fixture": "node backend/development/forum-preview.js"
   }
 }

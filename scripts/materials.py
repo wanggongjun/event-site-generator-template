@@ -20,7 +20,7 @@ def facts(config):
 
 def resource_destination(config, item):
     if item.get('url'):
-        return item['url']
+        return config['event'].get('siteUrl','').rstrip('/')+item['url'] if item['url'].startswith('/') else item['url']
     asset = item.get('asset', '')
     site = config['event'].get('siteUrl', '')
     return site.rstrip('/') + quote(asset, safe='/') if site else asset
@@ -61,8 +61,7 @@ def guide_sections(config):
     supplement = config['submission'].get('supplementCloseAt')
     if supplement:
         operational.append('补充材料截止：' + datetime.fromisoformat(supplement).strftime('%Y年%m月%d日 %H:%M'))
-    operational += ['报名与投稿是两项独立流程。开放后，先完成个人信息，再分别提交。',
-        '在线投稿系统每人一份投稿；最多 ' + str(config['files']['maxAttachments']) + ' 个附件，单个不超过 ' + str(config['files']['maxFileBytes']//1048576) + 'MB，支持 ' + '/'.join(config['files']['allowedExtensions']).upper() + '。']
+    operational += ['报名与投稿分别审核。提交报名后即可投稿，无需等待报名审核通过。', '报名和稿件允许修改，修改后重新待审核并保留历史版本。', '每人每类限一篇投稿；材料要求请查看网站对应投稿类别说明。']
     if f['siteUrl']:
         operational.append('会议网站：' + f['siteUrl'])
     contacts = [item['name'] + '（' + item['responsibility'] + '）：' + ' / '.join(item[k] for k in ('email', 'phone') if item.get(k)) + (('。' + item['note']) if item.get('note') else '') for item in config['contacts']]

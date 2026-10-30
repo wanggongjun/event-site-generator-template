@@ -79,10 +79,10 @@ async function logout(){
  fireEvent.click(view.getByRole('button',{name:'退出登录'}));
  await view.findByRole('heading',{name:'登录个人中心'});
  await waitFor(()=>assert.equal(entry(),'登录／注册'));
- assert.ok(view.queryByRole('tab',{name:'我的问题'})===null);
+ assert.ok(view.queryByRole('button',{name:'我的问题'})===null);
  assert.equal(dom.window.location.href,sameRoute);
 }
-const openQuestions=()=>fireEvent.click(view.getByRole('tab',{name:'我的问题'}));
+const openQuestions=()=>fireEvent.click(view.getByRole('button',{name:'我的问题'}));
 const submitQuestion=(value:string)=>{
  fireEvent.change(view.getByLabelText('问题'),{target:{value}});
  fireEvent.submit(view.getByRole('button',{name:'提交问题'}).closest('form')!);
@@ -98,12 +98,12 @@ try{
  await login(phones.a);assert.equal(dom.window.location.href,sameRoute);
  passed.push('failed login has no false success','same-route login updates entry');
 
- fireEvent.click(view.getByRole('tab',{name:'参会报名'}));
+ fireEvent.click(view.getByRole('button',{name:'参会报名'}));
  assert.equal((view.getByRole('button',{name:'提交参会报名'}) as HTMLButtonElement).disabled,false);
  assert.doesNotMatch(view.container.querySelector('.account-panel')!.textContent||'',/未确认|未提供|暂不开放|预览/);
  fireEvent.submit(view.getByRole('button',{name:'提交参会报名'}).closest('form')!);
  await view.findByText('报名暂时无法提交。');assert.ok(view.queryByText('参会报名已提交审核。')===null);
- fireEvent.click(view.getByRole('tab',{name:'在线投稿'}));
+ fireEvent.click(view.getByRole('button',{name:'在线投稿'}));
  assert.equal((view.getByRole('button',{name:'提交审核'}) as HTMLButtonElement).disabled,false);
  assert.doesNotMatch(view.container.querySelector('.account-panel')!.textContent||'',/未确认|未提供|暂不开放|预览/);
  fireEvent.change(view.getByLabelText(/投稿标题/),{target:{value:'研究报告'}});
@@ -173,7 +173,7 @@ try{
 
  // A fresh component reads only the authenticated account, not a retained in-memory list.
  cleanup();view=render(<MemoryRouter initialEntries={['/account']}><App/></MemoryRouter>);
- await view.findByRole('tab',{name:'我的问题'});openQuestions();await view.findByText('B 的旧问题');
+ await view.findByRole('button',{name:'我的问题'});openQuestions();await view.findByText('B 的旧问题');
  assert.ok(view.queryByText('A 的旧问题')===null);
  passed.push('remount reloads authenticated account questions');
 
@@ -181,7 +181,7 @@ try{
  pendingReads.push(async()=>denied('登录已失效，请重新登录'));
  fireEvent.click(view.getByRole('button',{name:'刷新问题'}));
  await view.findByRole('heading',{name:'登录个人中心'});await waitFor(()=>assert.equal(entry(),'登录／注册'));
- assert.ok(view.queryByText('B 的旧问题')===null);assert.ok(view.queryByRole('tab',{name:'我的问题'})===null);
+ assert.ok(view.queryByText('B 的旧问题')===null);assert.ok(view.queryByRole('button',{name:'我的问题'})===null);
  passed.push('question 401 clears session and private state');
  cleanup();
 

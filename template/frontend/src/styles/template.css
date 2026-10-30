@@ -1,6 +1,224 @@
 /* Narrow additions for refactored fixed forms; legacy tokens/public.css remain unchanged. */
-.account-page{padding:44px 0 96px}.account-page__header{display:flex;gap:20px;align-items:flex-start;justify-content:space-between;border-bottom:1px solid #ccd8e1;margin-bottom:26px;padding-bottom:16px}.account-page__header h2{margin:0;font-size:25px}.account-page__header p{margin:5px 0 0;color:var(--panshi-color-gray);font-size:13px}.account-tabs{position:static;display:flex;margin-bottom:28px;gap:4px;flex-wrap:wrap}.account-tabs button[aria-selected=true]{color:#fff;background:#173f61}.account-profile-form .registration-core-fields{padding:18px 0}.status-badge{display:inline-block;padding:4px 11px;border-radius:5px;background:#edf1f5;color:#425b70;font-size:13px;white-space:nowrap}.status-badge--accepted,.status-badge--approved{color:#17623a;background:#eaf6ee}.status-badge--rejected{color:#933a2c;background:#faeeea}.status-badge--needs_materials{color:#906114;background:#fff5dd}.review-feedback{padding:14px 17px;margin:20px 0;background:#f3f7fa;border-left:3px solid var(--panshi-color-primary);white-space:pre-wrap}.review-feedback p{margin:4px 0}.hotel-info{padding:10px 0;border-bottom:1px solid #e9ecef}.hotel-info h4,.hotel-info p{margin:0 0 6px}.resource-list{gap:12px}.resource-list .info-card a{display:inline-block;margin-top:9px}.supplement-form{margin-top:24px;padding-top:16px;border-top:1px solid #dfe6ec}.auth-field textarea{width:100%;padding:12px;border:1px solid #b9c4cf;border-radius:6px;font:inherit;resize:vertical}
+.account-page__header{display:flex;gap:20px;align-items:flex-start;justify-content:space-between;border-bottom:1px solid #ccd8e1;margin-bottom:26px;padding-bottom:16px}.account-page__header h2{margin:0;font-size:25px}.account-page__header p{margin:5px 0 0;color:var(--panshi-color-gray);font-size:13px}.status-badge{display:inline-block;padding:4px 11px;border-radius:5px;background:#edf1f5;color:#425b70;font-size:13px;white-space:nowrap}.status-badge--accepted,.status-badge--approved{color:#17623a;background:#eaf6ee}.status-badge--rejected{color:#933a2c;background:#faeeea}.status-badge--needs_materials{color:#906114;background:#fff5dd}.review-feedback{padding:14px 17px;margin:20px 0;background:#f3f7fa;border-left:3px solid var(--panshi-color-primary);white-space:pre-wrap}.review-feedback p{margin:4px 0}.hotel-info{padding:10px 0;border-bottom:1px solid #e9ecef}.hotel-info h4,.hotel-info p{margin:0 0 6px}.resource-list{gap:12px}.resource-list .info-card a{display:inline-block;margin-top:9px}.supplement-form{margin-top:24px;padding-top:16px;border-top:1px solid #dfe6ec}.auth-field textarea{width:100%;padding:12px;border:1px solid #b9c4cf;border-radius:6px;font:inherit;resize:vertical}
 
 .homepage-schedule-tables{display:grid;gap:24px}.schedule-overview-table td{white-space:pre-line}.mobile-service-drawer__scroll .info-card{margin-bottom:16px}
 
 .my-questions form{margin-bottom:28px}.my-questions__history-heading{display:flex;align-items:center;justify-content:space-between;gap:16px}.my-questions__history-heading h4{margin:0;font-size:17px}.my-questions__list{display:grid;gap:18px}.my-questions__item{padding:18px 0;border-bottom:1px solid #dfe6ec;overflow-wrap:anywhere}.my-questions__text{margin:0 0 8px;white-space:pre-wrap}.my-questions__item .review-feedback{margin-bottom:0}
+
+.submission-record{border-top:1px solid var(--panshi-color-border,#e2e8f0);padding:1.25rem 0}.submission-record h4{margin:0 0 .6rem}.account-page fieldset{min-width:0}.account-page .auth-actions{flex-wrap:wrap;gap:.75rem}.account-page label small{margin-left:.5em}.registration-question{margin:1.5rem 0}.registration-question>label{display:block;padding:.4rem 0}.registration-question input[type=radio]{width:auto;margin-right:.5rem}.registration-question textarea{width:100%}
+.event-banner.event-banner--background {
+  background-color: #071d62;
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  color: #fff;
+  padding: 24px 0 38px;
+}
+.event-banner--background .event-banner__institutions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.event-banner--background .event-banner__title {
+  margin: 32px 0 22px;
+  color: #fff;
+  text-align: center;
+  text-wrap: balance;
+  font-size: clamp(26px, 3.2vw, 46px);
+  line-height: 1.4;
+  text-shadow: 0 2px 5px rgba(0, 15, 65, .5);
+}
+.event-banner--background .event-banner__meta {
+  justify-content: center;
+  color: #fff;
+  font-size: 14px;
+}
+@media (max-width: 767px) {
+  .event-banner.event-banner--background { padding: 18px 0 26px; }
+  .event-banner--background .event-banner__institutions { font-size: 11px; gap: 6px 14px; }
+  .event-banner--background .event-banner__title { margin: 24px 0 18px; font-size: 26px; line-height: 1.45; }
+  .event-banner--background .event-banner__meta { font-size: 12px; gap: 8px 14px; }
+}
+
+.submission-version-details dl>div{margin:14px 0}.submission-version-details dt{font-weight:600;color:#244966}.submission-version-details dd{margin:6px 0;white-space:pre-wrap;overflow-wrap:anywhere}.submission-history{border-top:1px solid #dce3ea;padding:16px 0}.submission-record details{margin-top:14px}.submission-record summary{cursor:pointer;color:#244966}
+
+/* Forum additions use the original AccountPage classes and dimensions. */
+.forum-panel-heading{border-bottom:1px solid #dfe6ec;padding-bottom:20px;margin-bottom:26px}
+.account-security-fields{display:grid;gap:17px;margin:0;padding:0;min-width:0;border:0}
+.account-security-form .account-actions{margin-top:0}
+.account-filter{display:grid;gap:6px;max-width:320px;margin:22px 0;color:#364c5c;font-size:14px;font-weight:650}
+.account-filter select{width:100%;min-height:40px;padding:9px 11px;border:1px solid #b9c4cf;border-radius:6px;background:#fff;color:var(--panshi-color-dark);font:inherit;font-weight:400}
+.account-filter select:focus-visible,.account-security-form input:focus-visible{outline:3px solid color-mix(in srgb,var(--panshi-color-primary) 20%,transparent);border-color:var(--panshi-color-primary)}
+.account-status-summary h4{margin:0;font-size:17px}
+.account-status-summary details{margin-top:22px}
+.account-page details summary{cursor:pointer;color:#244e6d}
+.account-page .account-actions{align-items:center}
+.account-page .attachment-upload__files .account-button{min-height:32px;font-size:12px;flex:none}
+.account-page .submission-record{overflow-wrap:anywhere}
+@media(max-width:900px){.account-page .account-tabs{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:max-content;justify-content:start}.account-page__header{flex-wrap:wrap}.forum-panel-heading{gap:12px}}
+@media(max-width:640px){.account-page .account-security-form{max-width:100%}.account-page .account-security-form label{grid-template-columns:1fr;gap:5px}.account-page .account-button{max-width:100%;white-space:normal}.account-page .account-filter{max-width:100%}}
+
+/* Button links must retain the same foreground as button elements. */
+.account-page .account-actions a.account-button{color:#fff}
+.account-page .account-actions a.account-button--secondary{color:#244e6d}
+.account-page .account-actions a.account-button--danger{color:#8b3030}
+.account-page .account-button:focus-visible{outline:3px solid #86b7d7;outline-offset:3px}
+
+/* The standalone login introduction must sit below the sticky navigation. */
+.forum-account-access__content{width:100%;max-width:640px;margin-inline:auto}
+.forum-account-access__content>.auth-help{margin:14px 0 0}
+.forum-account-access__content>h3{margin:28px 0 0}
+.forum-account-access .auth-card{padding-top:22px}
+
+.forum-notice .content-section__body p{margin:0 0 14px}
+.forum-notice .content-section__body>p{overflow-wrap:anywhere}
+.forum-notice__hotel p{color:var(--panshi-color-gray-dark);font-size:15px;line-height:1.68}
+.forum-notice .event-signature{margin-top:36px}
+.forum-notice .event-signature p{margin:0}
+
+.event-banner__topline{display:flex;justify-content:space-between;align-items:flex-start;gap:24px}
+.event-banner__brandmarks{display:flex;align-items:center;gap:18px;min-width:0}
+.event-banner__brandmarks img{display:block;height:30px;width:auto;object-fit:contain;mix-blend-mode:screen;filter:grayscale(1) contrast(10)}
+.event-banner__brandmarks img[src$="/ucas-horizontal-white.png"]{height:24px}
+@media(max-width:767px){.event-banner__brandmarks{flex-direction:column;align-items:flex-start;gap:8px}.event-banner__brandmarks img{height:auto;width:100%;max-width:128px}}
+@media(max-width:767px){.event-banner__brandmarks img[src$="/ucas-horizontal-white.png"]{height:auto;max-width:104px}}
+.event-banner__series{margin:0;color:#fff;text-align:right;font-size:14px;font-weight:600;line-height:1.6;word-break:keep-all}
+@media(max-width:767px){.event-banner__topline{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}.event-banner__series{font-size:11px}.event-banner__topline .event-banner__institutions{gap:4px}}
+
+/* Reuse the original evening activity cards for the two submission entrances. */
+.account-page .submission-track-cards{gap:24px;margin-top:22px}
+.submission-track-cards h4{margin:0;color:#173f61;font-size:21px}
+.submission-track-cards .evening-activity-card__footer{padding-top:14px}
+.submission-form-heading{display:flex;justify-content:space-between;align-items:center;gap:16px}
+.submission-form-heading h4{margin:0;color:#173f61;font-size:21px}
+@media(max-width:700px){.submission-track-cards h4{font-size:19px}.submission-form-heading{flex-wrap:wrap}.submission-track-cards dl div{flex-wrap:wrap}.submission-track-cards dd{overflow-wrap:anywhere}}
+
+.submission-card-status{padding:18px 24px 12px;background:#f5f8fa;border-bottom:1px solid #e1e9ed}
+.submission-card-status p{margin:8px 0 0;color:#173f61;overflow-wrap:anywhere}
+.submission-card-record .review-feedback{margin:14px 24px}
+.submission-card-actions{display:flex;flex-wrap:wrap;gap:12px;padding:16px 24px 0}
+.submission-card-details{margin:14px 24px 0;overflow-wrap:anywhere}
+.submission-card-record+.evening-activity-card__body{margin-top:18px;border-top:1px solid #e1e9ed}
+@media(max-width:700px){.submission-card-status{padding:16px}.submission-card-record .review-feedback{margin:14px 16px}.submission-card-actions{padding:16px 16px 0}.submission-card-details{margin:14px 16px 0}}
+
+.submission-card-heading{padding:20px 24px 0}.submission-card-heading+.submission-card-record{margin-top:16px}@media(max-width:700px){.submission-card-heading{padding:16px 16px 0}}
+.resource-download-links { display: grid; gap: 16px; padding-top: 12px; }
+.resource-download-links p { margin: 0; }
+.resource-download-links a, .resource-download-links a:visited { color: #0066cc; text-decoration: underline; text-underline-offset: 3px; }
+.resource-download-links a:hover { color: #004c99; }
+
+/* Each choice is one clickable row; a radio belongs to the text on its right. */
+.account-page .registration-question>label.registration-choice{display:flex;align-items:center;gap:10px;cursor:pointer;padding:9px 0}
+.account-page .registration-choice>input[type=radio],.account-page .registration-choice>input[type=checkbox]{flex:0 0 17px;width:17px;height:17px;margin:0;align-self:center;accent-color:#1c5d8c}
+.account-page .registration-choice>.choice-card__body{min-width:0}
+.forum-panel-title{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.registration-state{display:inline-flex;align-items:center;border-radius:5px;padding:3px 10px;font-size:13px;font-weight:650;color:#65727d;background:#f1f4f6;white-space:nowrap}
+.registration-state--registered{color:#17623a;background:#edf7f1}
+
+/* Two layouts only: narrow portrait screens use the dock; square screens keep the sidebar. */
+@media (max-width:1100px){
+ .public-shell--forum .public-layout{grid-template-columns:minmax(0,1fr) clamp(160px,23vw,250px);gap:24px}
+ .public-shell--forum .public-sidebar{position:sticky;top:92px;display:grid;grid-template-columns:1fr;margin-top:0;padding-top:48px;max-height:calc(100dvh - 110px);overflow-y:auto}
+ .public-shell--forum .account-center__layout{grid-template-columns:136px minmax(0,1fr);gap:22px}
+ .public-shell--forum .account-tabs{position:sticky;top:92px;display:grid;grid-template-columns:1fr;grid-auto-flow:row;grid-auto-columns:auto;justify-content:stretch;overflow-x:visible}
+ .public-shell--forum .account-tabs button{text-align:left;white-space:normal}
+ .public-shell--forum .info-card{padding:22px 18px}
+ .public-shell--forum .proficiency-matrix{overflow-x:auto}
+}
+@media (max-width:900px){
+ .public-shell--forum .public-layout{gap:16px}
+ .public-shell--forum .account-center__layout{grid-template-columns:110px minmax(0,1fr);gap:16px}
+ .public-shell--forum .account-tabs button{padding:10px 8px}
+}
+@media (max-width:640px) and (min-aspect-ratio:4/5){
+ .public-shell--forum{padding-bottom:0}
+ .public-shell--forum .public-layout{display:grid;grid-template-columns:minmax(0,1fr) 144px;gap:12px;padding-bottom:72px}
+ .public-shell--forum .account-center__layout{grid-template-columns:88px minmax(0,1fr);gap:12px}
+ .public-shell--forum .account-tabs{padding:4px}
+ .public-shell--forum .mobile-service-dock{display:none}
+ .public-shell--forum .public-sidebar .info-card{padding:16px 12px}
+}
+@media (max-width:640px) and (max-aspect-ratio:4/5){
+ .public-shell--forum .public-layout{display:block}
+ .public-shell--forum .public-sidebar{display:none}
+ .public-shell--forum .account-center__layout{grid-template-columns:1fr;gap:22px}
+ .public-shell--forum .account-tabs{position:static;grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:max-content;justify-content:start;overflow-x:auto}
+ .public-shell--forum .account-tabs button{text-align:center;white-space:nowrap}
+}
+
+/* Keep profile guidance clear of the action button on desktop and mobile. */
+.account-page .forum-profile-help { margin: 12px 0 0; line-height: 1.6; }
+
+/* Separate account linking from password guidance; never overlap the link button. */
+.account-page .forum-account-link { display: grid; justify-items: start; gap: 16px; margin-bottom: 24px; }
+.account-page .forum-account-link > p { margin: 0; line-height: 1.6; }
+.account-page .forum-account-security > .auth-help { margin: 0 0 18px; line-height: 1.6; }
+
+/* liquidglass1021: real backdrop optics separate from the finish. */
+.forum-glass-defs { position: absolute !important; width: 0; height: 0; pointer-events: none; }
+@media (max-width: 640px) {
+ .mobile-service-glass-live { position: relative; z-index: 2; width: 100%; border-radius: 40px; pointer-events: auto; isolation: isolate; }
+ .mobile-service-drawer, .mobile-service-bar { background: transparent; border: 0; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; border-radius: 40px; }
+ .mobile-service-bar { isolation: auto; overflow: visible; }
+ .mobile-service-bar::before, .mobile-service-drawer::before, .mobile-service-drawer::after, .mobile-service-dock::before { content: none; }
+ .mobile-service-drawer { overflow: visible; }
+ .mobile-service-drawer__scroll { border-radius: 0 0 40px 40px; }
+ .mobile-service-dock__backdrop { background: transparent; }
+ .mobile-service-glass-live > .forum-glass-optics, .mobile-service-drawer > .forum-glass-optics { position: absolute; inset: 0; z-index: -2; border-radius: inherit; border: 1px solid transparent; overflow: hidden; pointer-events: none; }
+ .mobile-service-glass-live > .forum-glass-finish, .mobile-service-drawer > .forum-glass-finish { position: absolute; inset: 0; z-index: -1; border-radius: inherit; border: 1px solid rgb(255 255 255 / 54%); background: transparent; pointer-events: none; box-shadow: inset 0 1px 1px rgb(255 255 255 / 60%), inset 1px 0 1px rgb(255 255 255 / 51%), inset -1px -1px 2px rgb(255 255 255 / 48%), 0 18px 70px rgb(54 76 48 / 35%), 0 2px 8px rgb(54 76 48 / 17.5%); }
+ .forum-glass-finish::after { content: ''; position: absolute; inset: 0; border-radius: inherit; background: linear-gradient(135deg,#fff7,transparent 24%,transparent 72%,#fff4); opacity: .6; pointer-events: none; }
+ .mobile-service-bar__entry { border-radius: 30px; }
+}
+
+/* Soft recessed handle; keep the original 44px drag target. */
+@media (max-width: 640px) {
+ .mobile-service-dock[data-handle-style="soft"] .mobile-service-drawer__control::after,
+ .mobile-service-dock[data-handle-style="soft"] .mobile-service-drawer__handle::after,
+ .mobile-service-dock[data-handle-style="soft"] .mobile-service-dock__grabber::after { content: none; }
+ .mobile-service-dock[data-handle-style="soft"] .mobile-service-drawer__handle,
+ .mobile-service-dock[data-handle-style="soft"] .mobile-service-dock__grabber::before { width: 40px; height: 5px; border: 0; border-radius: 99px; background: rgb(51 72 79 / 23%); box-shadow: inset 0 1px 1px #233b4829, 0 1px 0 #ffffff80; backdrop-filter: none; -webkit-backdrop-filter: none; }
+}
+
+
+/* The mobile date card uses the same optics, with a 16px backdrop blur. */
+.info-card--mobile-glass > .forum-glass-optics,
+.info-card--mobile-glass > .forum-glass-finish { display: none; }
+@media (max-width: 640px) {
+ .mobile-service-drawer .info-card--mobile-glass { position: relative; isolation: isolate; background: transparent; border: 0; border-radius: 24px; box-shadow: none; }
+ .mobile-service-drawer .info-card--mobile-glass > .forum-glass-optics { display: block; position: absolute; inset: 0; z-index: -2; border-radius: inherit; overflow: hidden; pointer-events: none; }
+ .mobile-service-drawer .info-card--mobile-glass > .forum-glass-finish { display: block; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: rgb(255 255 255 / 12%); border: 1px solid rgb(255 255 255 / 54%); box-shadow: inset 0 1px 1px #ffffff99, 0 4px 18px #23463818; pointer-events: none; }
+}
+
+.mobile-service-shade { display: block; overflow: visible; pointer-events: none; }
+
+/* Keep dates as legible as the heading on the mobile glass surface. */
+.mobile-service-drawer .date-list dd { color: var(--panshi-color-dark); }
+
+.mobile-service-bar__details { color: var(--panshi-color-dark); }
+
+/* Confirmed registration stays visible across account pages and reloads. */
+.registration-success-banner{display:flex;align-items:center;gap:10px;margin:18px 0;padding:14px 18px;border:1px solid #a7d7bb;border-radius:12px;background:#effaf3;color:#17663a;font-size:17px;font-weight:700;}
+.registration-success-banner span{display:grid;place-items:center;width:25px;height:25px;border-radius:50%;background:#17663a;color:#fff;flex-shrink:0;}
+.registration-success-dialog{box-sizing:border-box;width:min(420px,calc(100vw - 40px));margin:auto;padding:32px;border:1px solid #d7e8df;border-radius:20px;background:#fff;color:#163b32;text-align:center;box-shadow:0 20px 70px #102d3440;}
+.registration-success-dialog::backdrop{background:rgb(10 30 45 / 40%);}
+.registration-success-icon{display:grid;place-items:center;width:52px;height:52px;margin:0 auto 16px;border-radius:50%;background:#e8f7ee;color:#17663a;font-size:30px;}
+.registration-success-dialog h2{margin:0 0 12px;font-size:24px;color:#17663a;}
+.registration-success-dialog p{margin:0 0 24px;color:#49635a;line-height:1.7;}
+.registration-success-dialog .account-button{min-width:130px;}
+@media(max-width:600px){.event-banner--background .event-banner__title{font-size:clamp(19px,5.2vw,26px);}.registration-success-dialog{padding:26px 22px;}}
+/* Without institution logos, keep the series label at the top right. */
+.event-banner__topline>.event-banner__series:only-child{margin-left:auto;grid-column:1 / -1;}
+
+.registration-submit-spinner{display:inline-block;width:16px;height:16px;margin-right:8px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;vertical-align:-3px;animation:registration-spin .8s linear infinite;}
+.registration-submit-progress{margin:12px 0 0;color:#36566e;font-size:14px;line-height:1.7;}
+@keyframes registration-spin{to{transform:rotate(360deg);}}
+@media(prefers-reduced-motion:reduce){.registration-submit-spinner{animation:none;}}
+
+/* Registration receipt is not an approval. */
+.registration-review--under_review,.registration-review--reviewing{background:#eef5ff;border-color:#b3cbe8;color:#244d7a}
+.registration-review--under_review span,.registration-review--reviewing span{background:#244d7a}
+.registration-review--rejected{background:#fff1f0;border-color:#e7b8b2;color:#8e3229}
+.registration-review--needs_materials{background:#fff9e8;border-color:#dfca8a;color:#735817}
+.event-banner--background .event-banner__title{overflow-wrap:anywhere}

@@ -1,6 +1,33 @@
+# v5 配置新增与默认规则
+
+Word 通知为原文依据，XLSX 为唯一结构化编辑源，素材由表引用。生成实例固定展示＋报名＋投稿，报名审核与稿件审核独立；报名提交后即可投稿，修改后重新待审。
+
+新增 event 工作表配置：
+
+| key | 默认值 | 含义 |
+|---|---|---|
+| attendance.autoClose | false | 是否按 openAt/closeAt 限制提交；true 时 closeAt 必填 |
+| submission.autoClose | false | 同上，作用于稿件提交及修改 |
+| attendance.enforceCapacity | false | 是否按已提交报名数限制新报名；启用必须有真实容量，修改原报名不占新名额 |
+| submission.perTrackLimit | 1 | 本版只支持每人每类一篇 |
+| submission.displayDeadline | 空 | 展示用原文，不自动启用截止 |
+| branding.backgroundImage | 内置蓝色背景 | 无字背景图 |
+| branding.bannerMode | background | background：HTML 文字叠背景；poster：完整 heroImage 成图 |
+| branding.technicalSupport | 空 | 页脚技术支持署名 |
+
+可选 tracks 工作表，表头严格为 key,title,form,description,materials,subtypes,evidenceRequired。key 为稳定小写标识；form 为 academic 或 practice；subtypes 用 | 分隔；evidenceRequired 为 true/false，只控制实践类别的链接/附件至少一种要求。缺表或空表默认单类别学术报告。多类别示例：academic/学术报告/academic、practice/实践报告/practice；支持自定义 key 和多个相同 form 类别。各类别每人一篇，名称不参与记录归属。
+
+resources 的本地下载附件不会进入 frontend/public；生成 OSS 上传清单，上传原件在 materials/oss-upload，公开下载走白名单接口。map 类型视觉图片仍可在站点静态资源中展示。填写 type=abstract-template 可在学术投稿表单显示摘要模板下载入口。
+
+配置中的 readiness 仅表示上述策略可执行，不代表真实服务已经接通；缺失日期不会自动禁止用户提交。所有凭据留在 env，见 integrations.md。
+
+以下为沿用的基础内容字段与素材校验说明；涉及默认业务及部署，以本节和 SKILL.md 为准。
+
+---
+
 # 单一 XLSX 配置契约 v2.0.0
 
-每场活动只有一个可编辑事实源：event.xlsx，以及同目录中由它引用的公共素材。工作簿不存凭据、管理员账号、数据库连接、短信或飞书密钥。报名、投稿、附件和审核记录留在独立 PostgreSQL 与鉴权文件存储中，生成器不会连接或改写业务数据库。生成后的 JSON 是派生文件，不能替代 XLSX 作为下次输入。
+每场活动只有一个可编辑事实源：event.xlsx，以及同目录中由它引用的公共素材。工作簿不存凭据、管理员账号、数据库连接、短信或飞书密钥。报名、投稿与审核快照使用独立活动状态目录和飞书；附件使用私有 OSS，生成器不会连接或改写业务数据库。生成后的 JSON 是派生文件，不能替代 XLSX 作为下次输入。
 
 ## 生成和验证
 
@@ -73,23 +100,6 @@ startDate <= endDate。填了 startAt/endAt 时，在 event.timezone 中的日�
 
 每个已知完整窗口必须 openAt < closeAt。补附件截止需要已知首次投稿截止，且 closeAt <= supplementCloseAt。报名、投稿和补材料可以覆盖活动期间或结束后，不强制截止早于会议开始。
 
-## 内部运营准备度
-
-config.readiness 由实际缺失的 event.capacity、attendance.openAt、attendance.closeAt、submission.openAt、submission.closeAt 派生：
-
-```json
-{
-  "mode": "preview",
-  "unresolved": [{"key": "event.capacity", "reason": "未提供会务事实，需主办方确认"}],
-  "attendanceEnabled": false,
-  "submissionEnabled": false
-}
-```
-
-报名可用需真实容量和完整报名窗口；投稿可用需真实容量和完整投稿窗口。二者独立判定。mode=ready 表示这五项配置齐全，不表示当前窗口仍开放或活动未结束。mode=preview 只在私有配置/manifest中记录待确认事项。登录、资料和草稿功能仍可用，后端在最终报名、投稿和补附件边界拒绝条件不齐的操作；公开按钮正常显示，点击失败才显示简短错误。
-
-未知的容量、截止时间和政策不出现在海报或社媒文案中。公开物料不包含构建/预览诊断或缺项清单。具体某天日程的未知时刻、地点使用语义标签，不能伪装成00:00—23:59。
-
 ## 集合工作表
 
 | 表名 | 精确表头 | 必填和用途 |
@@ -125,13 +135,13 @@ agenda.date 是日期，须在活动日期范围内；time 是 HH:MM、HH:MM-HH:
 | files.allowedExtensions | pdf,docx,pptx | 三种扩展名的非空子集，不带点 |
 | sync.pollSeconds | 60 | 5–3600 秒 |
 
-固定资料字段是姓名、手机号（只读）、邮箱、单位、身份、研究方向；部门、职务、个人简介可选。固定投稿字段是标题、摘要、关键词、作者与单位、报告人、附件、备注，每人一份投稿。这不是通用表单或任意流程引擎，不增加新平台。
+固定资料字段是姓名、手机号（只读）、邮箱、单位、身份、研究方向；部门、职务、个人简介可选。学术表单使用标题、摘要、关键词、作者与单位、报告人、附件、备注；实践表单使用题目、简介、链接、附件和可选子类型，每人每类一份投稿。这不是通用表单或任意流程引擎，不增加新平台。
 
 ## 公共素材与横幅
 
 素材路径相对于工作簿目录，如 assets/handbook.pdf。禁止绝对路径、..、反斜杠、隐藏目录、符号链接、vendor/node_modules/data/uploads 和凭据文件。只复制被引用的素材。输入图片允许 png/jpg/jpeg/webp，下载资料另可 pdf/docx/pptx，每个不超过20MB；图片验证实际格式且最多4000万像素，Office 拒绝宏。输入 SVG 不接收。URL 仅允许完整无凭据 http/https。
 
-素材复制到 frontend/public/assets/<原相对路径>，配置中路径是 /assets/<原相对路径>。例如 assets/handbook.pdf 对应 /assets/assets/handbook.pdf。在 siteUrl 未提供时，独立指南将资源路径明确标为本地演示路径。不要把身份证、报名名单或私人投稿附件放进公共素材。
+视觉素材复制到 frontend/public/assets/<原相对路径>；resources 下载附件改走本章开头的 OSS 流程。在 siteUrl 未提供时，独立指南将资源路径明确标为本地演示路径。不要把身份证、报名名单或私人投稿附件放进公共素材。
 
 有合法、同活动的现成 heroImage 时优先保留它；真实手册示例使用用户授权的原站 WebP，不能拿其旧日期和品牌用于新活动。给定heroImage时保留静态成图，不额外叠加logo或brandmarks。空白时 scripts/hero.py 生成可编辑 SVG 品牌骨架；brandmarks、seriesText、bannerTitle 都来自新活动 XLSX。日期和场地分区，位置延续原骨架。生成的图片不是对所有新品牌的通用设计系统。
 
@@ -148,7 +158,7 @@ agenda.date 是日期，须在活动日期范围内；time 是 HH:MM、HH:MM-HH:
 
 同一输入、素材、模板和字体/库版本产生同字节。验证失败退出码2，不触碰输出。生成先在临时目录成功，再覆盖生成器拥有的文件。未知非空输出目录拒绝；再生成需有效 manifest 且相同 slug。未知文件不覆盖，不删除已有文件，不追随链接。data、uploads、.env、node_modules 不复制或删改。删除输入资源后旧已生成文件可能留在磁盘，但不再出现在新配置中。
 
-修改会议事实后，重新生成、npm run build 并重启服务。独立新会议必须新目录、新数据库和账号。模板升级、数据库迁移或上线另需明确授权。
+修改会议事实后，重新生成、npm run build 并重启服务。独立新活动必须新目录、状态库和审核表；他山账号复用统一认证。模板升级、数据库迁移或上线另需明确授权。
 
 ## 从任意原始资料开始
 

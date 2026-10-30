@@ -1,13 +1,14 @@
 {
   "name": "event-frontend",
-  "version": "4.0.0",
+  "version": "5.0.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
     "test:state": "vite build --ssr test/session-state.tsx --outDir ../.frontend-test-build && node ../.frontend-test-build/session-state.js",
-    "test:pages": "vite build --ssr test/render-pages.tsx --outDir ../.page-test-build"
+    "test:pages": "vite build --ssr test/render-pages.tsx --outDir ../.page-test-build",
+    "test:forum": "vite build --ssr test/forum-state.tsx --outDir ../.forum-test-build && node ../.forum-test-build/forum-state.js"
   },
   "dependencies": {
     "liquid-glass-react": "1.1.1",

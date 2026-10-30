@@ -1,0 +1,61 @@
+name: Deploy activity
+on:
+  push:
+    branches: [staging, main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: deploy-${{ github.ref_name }}
+  cancel-in-progress: false
+jobs:
+  deploy:
+    if: github.ref_name == 'staging' || github.ref_name == 'main'
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref_name == 'main' && 'production' || 'staging' }}
+    env:
+      DEPLOY_ENV: ${{ github.ref_name == 'main' && 'production' || 'staging' }}
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      EVENT_DOMAIN: ${{ vars.EVENT_DOMAIN }}
+      EVENT_PORT: ${{ vars.EVENT_PORT }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build && npm test && npm run test:frontend
+      - name: Upload public downloads to this environment's OSS
+        env:
+          FORUM_OSS_BUCKET: ${{ secrets.OSS_BUCKET }}
+          FORUM_OSS_REGION: ${{ secrets.OSS_REGION }}
+          FORUM_OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
+          FORUM_OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+        run: |
+          export FORUM_OSS_PREFIX="$(node -p 'require("./config.json").event.slug')/$DEPLOY_ENV/"
+          node ops/upload-public.mjs
+      - name: Build runtime-only package
+        run: |
+          node -e 'require("fs").writeFileSync("dist/deployment.json",JSON.stringify({revision:process.env.GITHUB_SHA,environment:process.env.DEPLOY_ENV}))'
+          tar --exclude='backend/test' --exclude='backend/development' --exclude='backend/node_modules' -czf release.tar.gz dist backend config.json THIRD_PARTY_NOTICES.txt
+      - name: Release and verify
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          slug=$(node -p 'require("./config.json").event.slug')
+          [[ "$slug" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]]
+          [[ "$EVENT_DOMAIN" =~ ^[a-z0-9]+([.-][a-z0-9]+)+$ ]]
+          [[ "$EVENT_PORT" =~ ^[0-9]{4,5}$ ]]
+          [[ "$DEPLOY_USER" =~ ^[a-z_][a-z0-9_-]*$ ]]
+          [[ "$DEPLOY_HOST" =~ ^[a-zA-Z0-9.-]+$ ]]
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+          archive="/tmp/event-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.tar.gz"
+          scp release.tar.gz "$DEPLOY_USER@$DEPLOY_HOST:$archive"
+          ssh "$DEPLOY_USER@$DEPLOY_HOST" "sudo bash -s -- '$slug' '$DEPLOY_ENV' '$EVENT_DOMAIN' '$EVENT_PORT' '$GITHUB_SHA' '$archive'" < ops/deploy.sh

@@ -92,6 +92,8 @@ body { margin: 0; color: var(--panshi-color-dark); background: var(--panshi-colo
 .auth-card { max-width: 640px; margin-inline: auto; }
 .account-access-page { min-height: 520px; padding: 44px 0 96px; }
 .account-access-switch { display: grid; grid-template-columns: repeat(3, 1fr); margin: 0 0 22px; padding: 4px; background: #edf1f4; border-radius: 7px; }
+.account-access-switch--otp { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 600px) { .account-access-switch--otp { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .account-access-switch button { min-height: 40px; color: #52616d; background: transparent; border: 0; border-radius: 5px; font: inherit; font-size: 14px; font-weight: 650; cursor: pointer; }
 .account-access-switch button[aria-selected='true'] { color: #fff; background: #173f61; }
 .auth-step { color: var(--panshi-color-gray); font-weight: 600; }
