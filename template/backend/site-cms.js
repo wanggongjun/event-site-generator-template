@@ -30,7 +30,7 @@ export async function createSiteCms({db,env,config}){
    const rows=await readRows(),digest=rowDigest(rows),prepared=await prepare(rows);const token=randomBytes(32).toString('hex');set('preview',{id:prepared.id,token,digest,expires:Date.now()+7*86400000});
    previewFields={'预览链接':origin+'/cms-preview/'+token+'/','待发布版本':prepared.id};result='预览已生成。确认内容后选择“发布预览”；预览不接受报名。';
   }else if(command==='发布预览'){
-   const draft=get('preview');if(!draft||draft.expires<Date.now())validation('请先生成新的预览');if(feishuText(control.fields['待发布版本'])!==draft.id)validation('待发布版本与预览不一致，请重新生成预览');if(rowDigest(await readRows())!==draft.digest)validation('预览生成后内容又有修改，请重新生成预览');activate(draft.id,'发布');result='已发布，正式网站刷新后生效。';
+   const draft=get('preview');if(!draft||draft.expires<Date.now())validation('请先生成新的预览');if(feishuText(control.fields['待发布版本'])!==draft.id)validation('待发布版本与预览不一致，请重新生成预览');if(rowDigest(await readRows())!==draft.digest)validation('预览生成后内容又有修改，请重新生成预览');if(draft.id!==live.id)activate(draft.id,'发布');result='已发布，正式网站刷新后生效。';
   }else if(command==='回滚'){
    const target=feishuText(control.fields['回滚到版本'])||get('previous');const old=version(target);if(!old?.published)validation('请选择发布记录中已经上线的版本');if(target===live.id)validation('该版本已经是当前版本');
    const id='v'+Date.now()+'-'+hash(old.payload).slice(0,8);db.prepare('INSERT INTO cms_versions(id,payload,createdAt) VALUES(?,?,?)').run(id,JSON.stringify(old.payload),new Date().toISOString());activate(id,'回滚',target);result='已回滚正式网站；飞书编辑区保留原草稿，不会覆盖。';

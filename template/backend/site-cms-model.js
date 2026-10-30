@@ -75,7 +75,7 @@ export function compileCms(rows,base,priorFields=[]){
   const label=clean(val(r,'栏目名称'),40,'栏目名称');if(!label)fail('栏目名称不能为空');
   return{path,label,body:clean(val(r,'正文'),50000,'页面正文'),images:r.cmsImages||[],enabled,nav:bool(r,'显示导航'),order:order(r)};
  }).sort((a,b)=>a.order-b.order||a.path.localeCompare(b.path));
- for(const path of ['/','/register','/account','/privacy'])if(!pages.some(p=>p.path===path&&p.enabled))fail('必须保留并启用 '+path);
+ for(const path of ['/','/register','/account','/privacy','/fees'])if(!pages.some(p=>p.path===path&&p.enabled))fail('必须保留并启用 '+path);
  if(pages.filter(p=>p.enabled&&p.nav).length>10)fail('导航最多显示10个栏目');if(pages.length>40)fail('页面最多40个');
  const fields=rows.questions.map(r=>{
   const explicit=val(r,'字段标识');const builtin=builtinQuestions.find(q=>q.id===explicit);if(explicit&&!builtin)fail('新增问题请将字段标识留空，现有系统标识请勿修改');

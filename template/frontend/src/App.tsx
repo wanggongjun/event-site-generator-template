@@ -2,7 +2,7 @@ import {siteContent} from './site-content';
 import {SitePage} from './SitePage';
 import {CmsRegistrationPreview} from './forum/CmsRegistrationPreview';
 import {useEffect,useState,lazy,Suspense,type CSSProperties} from 'react';
-import {Link,Route,Routes,useLocation} from 'react-router-dom';
+import {Link,Route,Routes,useLocation,useHref} from 'react-router-dom';
 import sourceConfig from './site-content';
 import {type Config,type PersonContact,eventDates,formatDate} from './types';
 import {api} from './api';
@@ -101,7 +101,7 @@ function Privacy(){
  </ContentSection><ContactList/></section>;
 }
 export function App({preview=false}:{preview?:boolean}={}){
- const location=useLocation();const [authenticated,setAuthenticated]=useState(false);
+ const homeHref=useHref('/');const location=useLocation();const [authenticated,setAuthenticated]=useState(false);
  const accountRoute=['/account','/register'].includes(location.pathname);
  useEffect(()=>{document.title=`${config.event.shortTitle} · ${navigation.find(x=>x.to===location.pathname)?.label||'培训服务'}`;window.scrollTo(0,0)},[location.pathname]);
  useEffect(()=>{if(preview||accountRoute)return;let active=true;api('/api/v1/me/profile').then(()=>{if(active)setAuthenticated(true)}).catch(()=>{if(active)setAuthenticated(false)});return()=>{active=false}},[preview,location.pathname]);
@@ -115,7 +115,7 @@ export function App({preview=false}:{preview?:boolean}={}){
  return <div className="public-shell public-shell--forum" style={brandStyle}>
   {preview&&<div className="cms-preview-banner" role="status">会务预览 · 尚未发布 · 此处不能登录或提交报名。确认后请回飞书选择“发布预览”。</div>}
   <a className="skip-link" href="#main-content">跳到主要内容</a>
-  <EventBanner title={config.event.title} titleHref="/" dates={eventDates(config)} venue={config.event.location}
+  <EventBanner title={config.event.title} titleHref={homeHref} dates={eventDates(config)} venue={config.event.location}
    seriesText={config.branding.seriesText} brandmarks={config.brandmarks}
    backgroundImage={config.branding.backgroundImage||'/brand/banner-background.png'}/>
   <EventNavigation items={navigation}/>

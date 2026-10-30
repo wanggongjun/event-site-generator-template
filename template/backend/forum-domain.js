@@ -37,6 +37,7 @@ export function profileData(body,phone,formal=false,cmsFields=null){
   if(enabled('invoiceType')&&(mandatory('invoiceType')||data.invoiceType)&&!(definition('invoiceType')?.options||['电子普通发票','增值税专用发票','无需发票']).includes(data.invoiceType))error(400,'请选择发票类型');
   if(enabled('invoiceType')&&data.invoiceType&&data.invoiceType!=='无需发票'&&!data.invoiceTitle)error(400,'请填写发票抬头');
   if(enabled('invoiceType')&&data.invoiceType==='增值税专用发票'&&['invoiceTaxId','invoiceAddress','invoicePhone','invoiceBank','invoiceAccount'].some(k=>!data[k]))error(400,'请完整填写增值税专用发票信息');
+  if(enabled('invoiceType')&&data.invoiceType&&data.invoiceType!=='无需发票'&&definition('invoiceTaxId')?.required&&!data.invoiceTaxId)error(400,'请填写纳税人识别号');
   if(data.termsAccepted!=='2026-10-30')error(400,'请阅读并同意报名信息使用说明和收费规则');
   if(enabled('attachmentIds')&&mandatory('attachmentIds')&&!data.attachmentIds.length)error(400,'请上传学生证或在职证明');
  }
