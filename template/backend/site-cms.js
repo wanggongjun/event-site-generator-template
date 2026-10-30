@@ -25,7 +25,7 @@ export async function createSiteCms({db,env,config}){
  await initialize();
  // Apply an explicitly requested theme once, without publishing unrelated Feishu drafts.
  if(env.CMS_THEME_PATCH){
-  const patch=JSON.parse(env.CMS_THEME_PATCH),key='theme:'+patch.id;
+  const patch=JSON.parse(env.CMS_THEME_PATCH),key='theme:'+patch.id;patch.color='#'+String(patch.color).replace(/^#/,'');
   if(!/^[a-z0-9-]{1,80}$/.test(patch.id)||!/^#[a-f0-9]{6}$/i.test(patch.color)||!/^\/assets\/assets\/[a-z0-9-]+\.png$/.test(patch.banner))throw Error('Invalid theme patch');
   if(!get(key)){
    const controls=await client.rows(tables.control);if(controls.length!==1||feishuText(controls[0].fields['操作'])!=='待命'||get('pendingResult'))throw Error('Finish the pending Feishu publishing action before updating the theme');
