@@ -1,4 +1,4 @@
-export const emptyProfile={name:'',email:'',identityType:'',organization:'',department:'',majorCode:'',major:'',researchInterest:'',researchDirection:'',jobPosition:'',identityDescription:'',personalIntroduction:'',aiMode:'',ratings:{},attachmentIds:[]};
+export const emptyProfile={paymentMethod:'',invoiceType:'',invoiceTitle:'',invoiceTaxId:'',invoiceAddress:'',invoicePhone:'',invoiceBank:'',invoiceAccount:'',dietaryNeeds:'',researchQuestions:'',termsAccepted:'',name:'',email:'',identityType:'',organization:'',department:'',majorCode:'',major:'',researchInterest:'',researchDirection:'',jobPosition:'',identityDescription:'',personalIntroduction:'',aiMode:'',ratings:{},attachmentIds:[]};
 
 // Match only an unambiguous exact name; registration still validates the directory.
 export function applyHubProfile(current:any,patch:Record<string,string>,directory:any,overwrite=false){

@@ -22,13 +22,22 @@ export function profilePrefill(record){
  return data;
 }
 export function profileData(body,phone,formal=false){
- const keys=['name','email','identityType','organization','department','majorCode','major','researchInterest','researchDirection','jobPosition','identityDescription','personalIntroduction','aiMode'];
- const data=Object.fromEntries(keys.map(k=>[k,text(body[k]??'',k==='personalIntroduction'?5000:['researchDirection','researchInterest','identityDescription'].includes(k)?2000:300)]));data.phone=phone;
+ const keys=['name','email','identityType','organization','department','majorCode','major','researchInterest','researchDirection','jobPosition','identityDescription','personalIntroduction','aiMode','paymentMethod','invoiceType','invoiceTitle','invoiceTaxId','invoiceAddress','invoicePhone','invoiceBank','invoiceAccount','dietaryNeeds','researchQuestions','termsAccepted'];
+ const data=Object.fromEntries(keys.map(k=>[k,text(body[k]??'',['dietaryNeeds','researchQuestions'].includes(k)?2000:k==='personalIntroduction'?5000:['researchDirection','researchInterest','identityDescription'].includes(k)?2000:300)]));data.phone=phone;
  data.ratings=Object.fromEntries(skills.map(k=>[k,text(body.ratings?.[k]??'',50)]));data.attachmentIds=fileIds(body.attachmentIds);
  const required={本科生:['organization','department','majorCode','major'],硕士研究生:['organization','department','majorCode','major','researchDirection'],博士研究生:['organization','department','majorCode','major','researchDirection'],在站博士后:['organization','researchDirection'],在职人员:['organization','jobPosition'],其他:['identityDescription']};
  if(data.email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email))error(400,'请输入有效电子邮箱');
  if(formal){if(!data.name||!data.email||!identities.includes(data.identityType)||(required[data.identityType]??[]).some(k=>!data[k]))error(400,'请完整填写基本信息');}
  if(formal&&['本科生','硕士研究生','博士研究生'].includes(data.identityType)){const programs=data.identityType==='本科生'?directory.undergraduateMajors:directory.graduatePrograms;if(!programs.some(p=>p.code===data.majorCode&&p.name===data.major))error(400,'请从对应专业名录选择有效代码和名称');}
+ if(formal){
+  if(!['对公转账','现场缴费'].includes(data.paymentMethod))error(400,'请选择缴费方式');
+  if(!['电子普通发票','增值税专用发票','无需发票'].includes(data.invoiceType))error(400,'请选择发票类型');
+  if(data.invoiceType!=='无需发票'&&!data.invoiceTitle)error(400,'请填写发票抬头');
+  if(data.invoiceType==='增值税专用发票'&&['invoiceTaxId','invoiceAddress','invoicePhone','invoiceBank','invoiceAccount'].some(k=>!data[k]))error(400,'请完整填写增值税专用发票信息');
+  if(data.termsAccepted!=='2026-10-30')error(400,'请阅读并同意报名信息使用说明和收费规则');
+  if(!data.attachmentIds.length)error(400,'请上传学生证或在职证明');
+ }
+ if(data.invoiceType==='无需发票')for(const k of ['invoiceTitle','invoiceTaxId','invoiceAddress','invoicePhone','invoiceBank','invoiceAccount'])data[k]='';
  const applicable=new Set(required[data.identityType]??[]);if(data.identityType==='本科生')applicable.add('researchInterest');if(data.identityType==='其他')applicable.add('organization');
  for(const key of new Set(Object.values(required).flat().concat('researchInterest')))if(!applicable.has(key))data[key]='';
  return data;
