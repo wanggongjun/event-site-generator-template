@@ -110,7 +110,7 @@ export function App({preview=false}:{preview?:boolean}={}){
   <div><dt>培训日期</dt><dd>{eventDates(config)}</dd></div>
   {config.attendance.closeAt&&<div><dt>线上报名截止</dt><dd>{formatDate(config.attendance.closeAt,config.event.timezone)}</dd></div>}
  </dl></InfoCard>;
- const brandStyle=config.branding.primaryColor?({'--panshi-color-primary':config.branding.primaryColor,'--panshi-gradient-primary':`linear-gradient(135deg, ${config.branding.primaryColor} 0%, #9fd4c4 100%)`} as CSSProperties):undefined;
+ const brandStyle=config.branding.primaryColor?({'--panshi-color-primary':config.branding.primaryColor,'--panshi-gradient-primary':`linear-gradient(135deg, ${config.branding.primaryColor} 0%, color-mix(in srgb, ${config.branding.primaryColor}, white 68%) 100%)`} as CSSProperties):undefined;
  const organizers=config.home.organizers.filter(x=>['主办单位','主办'].includes(x.role));
  return <div className="public-shell public-shell--forum" style={brandStyle}>
   {preview&&<div className="cms-preview-banner" role="status">会务预览 · 尚未发布 · 此处不能登录或提交报名。确认后请回飞书选择“发布预览”。</div>}

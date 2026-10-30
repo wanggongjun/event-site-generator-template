@@ -1,4 +1,6 @@
 import {randomBytes} from 'node:crypto';
+import {readFile} from 'node:fs/promises';
+import {resolve} from 'node:path';
 import {CmsFeishu,feishuText} from './site-cms-feishu.js';
 import {compileCms,hash} from './site-cms-model.js';
 const validation=message=>{throw Object.assign(Error(message),{cmsValidation:true});};
@@ -21,6 +23,29 @@ export async function createSiteCms({db,env,config}){
  async function history(v){const rows=await client.rows(tables.history);if(!rows.some(r=>feishuText(r.fields['版本'])===v.id))await client.write(tables.history,{'版本':v.id,'发布时间':new Date().toISOString(),'操作':v.action||'初始版本','内容摘要':`${v.payload.pages.length}个页面；${v.payload.fields.filter(q=>q.enabled).length}组报名字段`,'来源版本':v.source||''});}
  async function initialize(){if(live)return;const rows=await readRows();const prepared=await prepare(rows);activate(prepared.id,'初始导入');await history(live);}
  await initialize();
+ // Apply an explicitly requested theme once, without publishing unrelated Feishu drafts.
+ if(env.CMS_THEME_PATCH){
+  const patch=JSON.parse(env.CMS_THEME_PATCH),key='theme:'+patch.id;
+  if(!/^[a-z0-9-]{1,80}$/.test(patch.id)||!/^#[a-f0-9]{6}$/i.test(patch.color)||!/^\/assets\/assets\/[a-z0-9-]+\.png$/.test(patch.banner))throw Error('Invalid theme patch');
+  if(!get(key)){
+   const controls=await client.rows(tables.control);if(controls.length!==1||feishuText(controls[0].fields['操作'])!=='待命'||get('pendingResult'))throw Error('Finish the pending Feishu publishing action before updating the theme');
+   const rows=await client.rows(tables.settings),banner=rows.filter(r=>feishuText(r.fields['设置标识'])==='banner'),color=rows.filter(r=>feishuText(r.fields['设置标识'])==='primaryColor');
+   if(banner.length!==1||color.length!==1)throw Error('Theme settings must be unique');
+   const bytes=await readFile(resolve(env.APP_ROOT||resolve(import.meta.dirname,'..'),'dist','.'+patch.banner));
+   if(!bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])))throw Error('Theme image must be PNG');
+   const imageId=hash(bytes),imagePath='/api/site/media/'+imageId;
+   db.prepare('INSERT OR IGNORE INTO cms_images VALUES(?,?,?)').run(imageId,'image/png',bytes);
+   await client.write(tables.settings,{'内容':imagePath,'图片':[]},banner[0].record_id);
+   await client.write(tables.settings,{'内容':patch.color},color[0].record_id);
+   const payload=structuredClone(live.payload);payload.config.branding.backgroundImage=imagePath;payload.config.branding.primaryColor=patch.color;payload.settings.banner=imagePath;payload.settings.primaryColor=patch.color;
+   const id='theme-'+patch.id,at=new Date().toISOString();
+   db.prepare('INSERT OR IGNORE INTO cms_versions(id,payload,createdAt) VALUES(?,?,?)').run(id,JSON.stringify(payload),at);
+   await history({...version(id),action:'主题更新',source:live.id});
+   await client.write(tables.control,{'当前版本':id,'预览链接':'','待发布版本':'','处理结果':'湖蓝横幅与按钮配色已更新。其他草稿未发布；需要预览时请重新生成。','更新时间':at},controls[0].record_id);
+   db.exec('BEGIN IMMEDIATE');try{set('previous',get('current'));set('current',id);set('preview',null);set(key,true);db.prepare('UPDATE cms_versions SET published=1,action=?,source=? WHERE id=?').run('主题更新',live.id,id);db.exec('COMMIT');}catch(e){db.exec('ROLLBACK');throw e;}
+   live=version(id);console.log(JSON.stringify({themePatch:patch.id,ok:true}));
+  }
+ }
  async function poll(){if(busy||closing)return;busy=true;let control;try{
   const controls=await client.rows(tables.control);if(controls.length!==1)validation('网站发布表必须且只能保留一行');control=controls[0];const command=feishuText(control.fields['操作']);
   const existing=get('pendingResult');if(existing){if(command!=='待命')await client.write(tables.control,existing.fields,existing.recordId);set('pendingResult',null);await history(live);return;}
