@@ -31,7 +31,7 @@
 .public-shell .account-page .account-actions a.account-button--secondary { color:var(--panshi-color-primary); border-color:#84b4a7; }
 .public-shell .account-page .account-button:focus-visible { outline-color:#68b8a4; }
 .public-shell .account-tabs, .public-shell .account-access-switch { background:#eef5f1; }
-.public-shell .account-tabs button:hover { background:#deeee5; }
+.public-shell .account-tabs button:hover:not(.is-active) { background:#deeee5; }
 .forum-notice .content-section__body > p { white-space: pre-line; }
 .camp-course-description { margin-bottom: 22px; }
 .camp-course-description h3 { margin: 0 0 8px; color: var(--panshi-color-dark); font-size: 17px; }
