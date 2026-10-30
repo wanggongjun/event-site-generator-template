@@ -536,7 +536,7 @@ def template_files(template):
     result=[]
     for p in sorted(template.rglob('*')):
         rel=p.relative_to(template)
-        if any(part in FORBIDDEN_SEGMENTS or part == 'dist' or (part.startswith('.') and part not in ('.env.example','.gitignore','.npmrc','.github')) for part in rel.parts):
+        if any(part in FORBIDDEN_SEGMENTS or part == 'dist' or (part.startswith('.') and part not in ('.env.example','.gitignore','.npmrc','.github','.gitattributes')) for part in rel.parts):
             continue
         if p.is_symlink():
             fail(f'template: 禁止符号链接 {rel}')
