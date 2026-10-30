@@ -1,4 +1,5 @@
 import { CalendarDays, MapPin } from 'lucide-react'
+import type { CSSProperties } from 'react'
 
 export interface EventBannerImage {
   src: string
@@ -46,7 +47,7 @@ export function EventBanner({ title, titleHref, dates, venue, tagline, scale, im
   }
 
   const titleContent = title
-  return <header className={`event-banner${backgroundImage ? ' event-banner--background' : ''}`} style={backgroundImage ? {backgroundImage: `url("${backgroundImage}")`} : undefined} data-testid="event-banner">
+  return <header className={`event-banner${backgroundImage ? ' event-banner--background' : ''}`} style={backgroundImage ? {'--event-banner-background': `url("${backgroundImage}")`} as CSSProperties : undefined} data-testid="event-banner">
     <div className="event-container">
       <div className="event-banner__topline">{brandmarks?.length ? <div className="event-banner__brandmarks">{brandmarks.map(mark=>mark.asset.endsWith('/kiz-logo.png')?<span className="event-banner__kiz-logo" key={mark.asset}><img src={mark.asset} alt={mark.label}/></span>:<img key={mark.asset} src={mark.asset} alt={mark.label}/>)}</div> : !!institutions?.length && <div className="event-banner__institutions">{institutions.map(name => <span key={name}>{name}</span>)}</div>}{seriesText&&<p className="event-banner__series">{seriesText}</p>}</div>
       <h1 className="event-banner__title">{titleHref ? <a href={titleHref}>{titleContent}</a> : titleContent}</h1>

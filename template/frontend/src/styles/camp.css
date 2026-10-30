@@ -1,7 +1,7 @@
 /* Camp-only content and form fields; the shared template owns the visual shell. */
 /* Crop the original 1200×283 logo to x=0,y=132,w=660,h=120 without redrawing it. */
 .public-shell .event-banner__kiz-logo { display:block; position:relative; width:344px; max-width:100%; aspect-ratio:660 / 120; overflow:hidden; }
-.public-shell .event-banner__kiz-logo img { position:absolute; top:-110%; left:0; width:181.818182%; max-width:none; height:auto; filter:grayscale(1) invert(1) contrast(2); mix-blend-mode:screen; }
+.public-shell .event-banner__kiz-logo img { position:absolute; top:-110%; left:0; width:181.818182%; max-width:none; height:auto; filter:none; mix-blend-mode:normal; }
 .public-shell .event-banner__brandmarks:only-child { grid-column:1 / -1; }
 @media(max-width:767px) { .public-shell .event-banner__kiz-logo { width:276px; } }
 /* User-selected jade green; retain the source artwork and alpha channel. */
@@ -12,8 +12,19 @@
   --panshi-color-dark:#143e35;
   --panshi-color-surface-muted:#f3f8f5;
 }
-.public-shell .event-banner.event-banner--background { background-color:var(--panshi-color-primary); background-blend-mode:luminosity; }
-.public-shell .event-banner__title { text-shadow:0 2px 5px rgb(0 35 29 / 45%); }
+.public-shell .event-banner.event-banner--background {
+  position:relative; isolation:isolate; overflow:hidden;
+  background-color:var(--panshi-color-primary);
+  background-image:linear-gradient(115deg,#e4f5ed 0%,#a9ddca 52%,var(--panshi-color-primary) 100%);
+  color:var(--panshi-color-dark);
+}
+.public-shell .event-banner--background::before {
+  content:''; position:absolute; inset:0; z-index:-1; pointer-events:none;
+  background-image:var(--event-banner-background); background-size:cover; background-position:center;
+  filter:grayscale(1); mix-blend-mode:screen; opacity:.35;
+}
+.public-shell .event-banner--background .event-banner__title { color:var(--panshi-color-dark); text-shadow:none; }
+.public-shell .event-banner--background .event-banner__meta { color:#215441; }
 .public-shell .event-footer { background:#123e35; }
 .public-shell .mobile-service-bar__entry { background:var(--panshi-color-primary); box-shadow:inset 0 1px rgb(255 255 255 / 26%),0 5px 14px rgb(0 80 65 / 20%); }
 .public-shell .mobile-service-bar__details span { border-color:var(--panshi-color-primary); }

@@ -8,6 +8,7 @@
 .submission-record{border-top:1px solid var(--panshi-color-border,#e2e8f0);padding:1.25rem 0}.submission-record h4{margin:0 0 .6rem}.account-page fieldset{min-width:0}.account-page .auth-actions{flex-wrap:wrap;gap:.75rem}.account-page label small{margin-left:.5em}.registration-question{margin:1.5rem 0}.registration-question>label{display:block;padding:.4rem 0}.registration-question input[type=radio]{width:auto;margin-right:.5rem}.registration-question textarea{width:100%}
 .event-banner.event-banner--background {
   background-color: #071d62;
+  background-image: var(--event-banner-background);
   background-position: center;
   background-size: cover;
   background-repeat: no-repeat;
