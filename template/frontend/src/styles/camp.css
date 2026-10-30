@@ -49,6 +49,8 @@
 .public-shell .account-tabs button.is-active,
 .public-shell .account-page .account-button:not(.account-button--secondary):not(.account-button--danger),
 .public-shell .attachment-upload__input::file-selector-button { color:#143e35; }
+.public-shell .sidebar-cta,
+.public-shell .mobile-service-bar__entry { color:#fff; }
 .public-shell main a:not(.registration-cta):not(.auth-button):not(.account-button),
 .public-shell .account-button--secondary,
 .public-shell .account-page .account-actions a.account-button--secondary,
