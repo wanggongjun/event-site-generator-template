@@ -2,6 +2,8 @@
 import {ForumFeishu} from '../backend/forum-feishu.js';
 import {signHubRequest} from '../backend/profile-hub.js';
 import {randomBytes} from 'node:crypto';
+import {CmsFeishu} from '../backend/site-cms-feishu.js';
+import {cmsTables} from '../backend/site-cms-model.js';
 const client=new ForumFeishu(process.env);
 const report=(stage,e)=>{
  console.error(JSON.stringify({dependency:'account-records',stage,version:client.version,ok:false,name:e.name,message:e.message,code:e.code,status:e.status,category:e.category,requestId:e.requestId}));
@@ -38,3 +40,12 @@ try{
  if(r.status!==200||data.active!==false)throw Error('SSO client validation failed: HTTP '+r.status);
  console.log(JSON.stringify({dependency:'tashan-sso',clientAuthenticated:true,ok:true}));
 }catch(e){report('tashan-sso',e);}
+try{
+ const cms=new CmsFeishu(process.env),tables=JSON.parse(process.env.CMS_TABLES||'{}');
+ for(const key of Object.keys(cmsTables)){
+  if(!tables[key])throw Error('Missing CMS table: '+key);
+  const rows=await cms.rows(tables[key]);
+  if(key==='control'&&rows.length!==1)throw Error('CMS needs exactly one control row');
+  console.log(JSON.stringify({dependency:'site-cms',table:key,ok:true,count:rows.length}));
+ }
+}catch(e){report('site-cms',e);}

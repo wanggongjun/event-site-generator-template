@@ -1,6 +1,9 @@
+import {siteContent} from './site-content';
+import {SitePage} from './SitePage';
+import {CmsRegistrationPreview} from './forum/CmsRegistrationPreview';
 import {useEffect,useState,lazy,Suspense,type CSSProperties} from 'react';
 import {Link,Route,Routes,useLocation} from 'react-router-dom';
-import sourceConfig from './config.generated.json';
+import sourceConfig from './site-content';
 import {type Config,type PersonContact,eventDates,formatDate} from './types';
 import {api} from './api';
 import {EventBanner} from './components/EventBanner';
@@ -13,12 +16,13 @@ import './styles/camp.css';
 
 const Account=lazy(()=>import('./Account').then(m=>({default:m.Account})));
 const config=sourceConfig as Config;
-const navigation=[
+const defaultNavigation=[
  {label:'首页',to:'/'},{label:'在线报名',to:'/register'},
  {label:'费用与发票',to:'/fees'},{label:'交通住宿',to:'/travel'},
  {label:'联系我们',to:'/contact'},{label:'常见问题',to:'/faq'},
  {label:'个人中心',to:'/account'},
 ];
+const navigation=siteContent.pages.length?siteContent.pages.filter(p=>p.enabled&&p.nav).map(p=>({label:p.label,to:p.path})):defaultNavigation;
 const notice=(title:string)=>config.notices?.find(item=>item.title===title)?.body;
 const registrationTitles=['收费标准','在线报名','现场报名','报到安排','结业证书'];
 const feeTitles=['收费标准','对公转账','现场缴费','缴费确认','发票说明','退费与名额转让'];
@@ -109,6 +113,7 @@ export function App({preview=false}:{preview?:boolean}={}){
  const brandStyle=config.branding.primaryColor?({'--panshi-color-primary':config.branding.primaryColor,'--panshi-gradient-primary':`linear-gradient(135deg, ${config.branding.primaryColor} 0%, #9fd4c4 100%)`} as CSSProperties):undefined;
  const organizers=config.home.organizers.filter(x=>['主办单位','主办'].includes(x.role));
  return <div className="public-shell public-shell--forum" style={brandStyle}>
+  {preview&&<div className="cms-preview-banner" role="status">会务预览 · 尚未发布 · 此处不能登录或提交报名。确认后请回飞书选择“发布预览”。</div>}
   <a className="skip-link" href="#main-content">跳到主要内容</a>
   <EventBanner title={config.event.title} titleHref="/" dates={eventDates(config)} venue={config.event.location}
    seriesText={config.branding.seriesText} brandmarks={config.brandmarks}
@@ -116,14 +121,16 @@ export function App({preview=false}:{preview?:boolean}={}){
   <EventNavigation items={navigation}/>
   <div className="event-container public-layout" data-testid="desktop-content-sidebar">
    <main id="main-content" tabIndex={-1}><Suspense fallback={<p role="status">正在加载…</p>}><Routes>
+    {siteContent.pages.length?siteContent.pages.filter(p=>p.enabled&&!['/register','/account'].includes(p.path)).map(p=><Route key={p.path} path={p.path} element={<SitePage page={p}/>}/>):<>
     <Route path="/" element={<Home/>}/><Route path="/travel" element={<Travel/>}/>
     <Route path="/fees" element={<Fees/>}/><Route path="/contact" element={<section className="public-page__section" aria-label="联系我们"><ContactList/></section>}/>
     <Route path="/faq" element={<Faq/>}/><Route path="/privacy" element={<Privacy/>}/>
     <Route path="/about" element={<div className="forum-notice"><ContentSection title="培训介绍">{config.home.intro.map((p,i)=><p key={i}>{p}</p>)}<p>{config.home.target}</p><Organizations/></ContentSection></div>}/>
     <Route path="/agenda" element={<ContentSection title="日程安排"><p>{notice('日程后续通知')}</p><AgendaTables agenda={config.agenda}/></ContentSection>}/>
     <Route path="/courses" element={<ContentSection title="课程介绍"><Courses/></ContentSection>}/>
-    <Route path="/register" element={<Account config={config} offline={preview} onSessionChange={setAuthenticated}/>}/>
-    <Route path="/account" element={<Account config={config} offline={preview} onSessionChange={setAuthenticated}/>}/>
+    </>}
+    <Route path="/register" element={preview?<CmsRegistrationPreview/>:<Account config={config} onSessionChange={setAuthenticated}/>}/>
+    <Route path="/account" element={preview?<p>个人中心使用正式账号，预览中不开放登录。</p>:<Account config={config} onSessionChange={setAuthenticated}/>}/>
     <Route path="*" element={<section className="placeholder-page"><h2>页面不存在</h2><Link to="/">返回首页</Link></section>}/>
    </Routes></Suspense></main>
    <aside className="public-sidebar" aria-label="活动补充信息">{!accountRoute&&<Link className="registration-cta sidebar-cta" to={entry.to}>{entry.label}</Link>}{datesCard}</aside>
@@ -131,7 +138,7 @@ export function App({preview=false}:{preview?:boolean}={}){
   <MobileServiceDock entry={entry}>{datesCard}</MobileServiceDock>
   <footer className="event-footer"><div className="event-container event-footer__grid">
    <section><h2>{config.event.shortTitle}</h2><p>主办单位：{organizers.map(x=>x.name).join('、')}</p><p>{config.event.subtitle}</p></section>
-   <section><h2>联系咨询</h2>{[...new Set(config.contacts.map(x=>x.responsibility))].map(group=><div className="event-footer__contact" key={group}><strong>{group}</strong>{config.contacts.filter(x=>x.responsibility===group).map(x=><span key={x.name}>{x.name} {x.email||x.phone}</span>)}</div>)}</section>
+   <section><h2>联系咨询</h2>{sourceConfig.cmsFooterContacts!==undefined?<p style={{whiteSpace:'pre-line'}}>{sourceConfig.cmsFooterContacts}</p>:[...new Set(config.contacts.map(x=>x.responsibility))].map(group=><div className="event-footer__contact" key={group}><strong>{group}</strong>{config.contacts.filter(x=>x.responsibility===group).map(x=><span key={x.name}>{x.name} {x.email||x.phone}</span>)}</div>)}</section>
    <nav aria-label="页脚导航"><h2>快速入口</h2><Link to="/">活动首页</Link><Link to="/register">在线报名</Link><Link to="/fees">费用与发票</Link><Link to="/account">个人中心</Link><Link to="/privacy">报名信息使用说明</Link></nav>
   </div><div className="event-container event-footer__legal"><span>© {config.event.startDate.slice(0,4)} {config.event.shortTitle}会务组</span></div></footer>
  </div>;

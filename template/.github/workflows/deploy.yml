@@ -63,5 +63,7 @@ jobs:
           }
           const sso=await (await fetch(origin+'/api/forum/sso/status',{signal:AbortSignal.timeout(20000)})).json();
           if(sso.enabled!==true)throw Error('SSO login entry was not enabled');
+          const content=await (await fetch(origin+'/api/site/content',{signal:AbortSignal.timeout(20000)})).json();
+          if(!content.revision?.startsWith('v')||!content.pages?.length||!content.fields?.length||content.preview)throw Error('Published CMS content unavailable');
           console.log('Published and verified: '+origin);
           JS

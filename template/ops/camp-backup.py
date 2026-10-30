@@ -7,7 +7,7 @@ source=sqlite3.connect('file:'+str(shared/'data/recovery.sqlite')+'?mode=ro',uri
 dest=sqlite3.connect(str(target/'recovery.sqlite'))
 with dest:source.backup(dest)
 source.close();dest.close();os.chmod(target/'recovery.sqlite',0o600)
-for file in ['app.env','feishu-ids.json','oss-identity.json','profile.env','profile-secret']:
+for file in ['app.env','feishu-ids.json','oss-identity.json','profile.env','profile-secret','cms-ids.json','tashan-sso.env']:
  p=shared/file
  if p.is_file():shutil.copy2(p,target/file);os.chmod(target/file,0o600)
 for file in ['config.json','REVISION']:

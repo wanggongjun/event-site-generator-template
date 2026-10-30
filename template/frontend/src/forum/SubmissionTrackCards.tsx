@@ -1,5 +1,5 @@
 import {SubmissionDetails,statusName} from './SubmissionDetails';
-import config from '../config.generated.json';
+import config from '../site-content';
 
 import {tracks} from './tracks';
 

@@ -1,4 +1,4 @@
-import config from '../config.generated.json';
+import config from '../site-content';
 const prefix=`forum-${config.event.slug}-`;
 export function readLocal(user:string,kind:string){try{return JSON.parse(localStorage.getItem(prefix+user+'-'+kind)||'null');}catch{return null;}}
 export function writeLocal(user:string,kind:string,value:unknown){try{if(value===null)localStorage.removeItem(prefix+user+'-'+kind);else localStorage.setItem(prefix+user+'-'+kind,JSON.stringify(value));}catch{/* Server-side saved drafts remain available when browser storage is disabled. */}}
