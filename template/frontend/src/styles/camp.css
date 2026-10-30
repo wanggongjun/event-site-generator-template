@@ -13,16 +13,9 @@
   --panshi-color-surface-muted:#f3f8f5;
 }
 .public-shell .event-banner.event-banner--background {
-  position:relative; isolation:isolate; overflow:hidden;
   background-color:var(--panshi-color-primary);
-  background-image:none;
+  background-image:var(--event-banner-background);
   color:#fff;
-}
-.public-shell .event-banner--background::before {
-  content:''; position:absolute; inset:0; z-index:-1; pointer-events:none;
-  background-image:var(--event-banner-background); background-size:cover; background-position:center;
-  background-color:var(--panshi-color-primary); background-blend-mode:luminosity;
-  filter:brightness(1.8) contrast(.7);
 }
 .public-shell .event-banner--background .event-banner__title { color:#fff; text-shadow:0 2px 5px rgb(0 35 29 / 35%); }
 .public-shell .event-banner--background .event-banner__meta { color:#fff; }
