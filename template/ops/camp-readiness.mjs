@@ -1,5 +1,7 @@
 // Verify the actual signed-in account dependencies without creating accounts or records.
 import {ForumFeishu} from '../backend/forum-feishu.js';
+import {signHubRequest} from '../backend/profile-hub.js';
+import {randomBytes} from 'node:crypto';
 const client=new ForumFeishu(process.env);
 const report=(stage,e)=>{
  console.error(JSON.stringify({dependency:'account-records',stage,version:client.version,ok:false,name:e.name,message:e.message,code:e.code,status:e.status,category:e.category,requestId:e.requestId}));
@@ -18,3 +20,21 @@ for(const kind of ['registration','submission']){
   }
  }
 }
+// Empty input exercises routing and client authentication, but cannot read or
+// create a person's profile. 422 is the expected authenticated validation result.
+for(const endpoint of ['/lookup','/sync']){
+ try{
+  const body=JSON.stringify({phone:''});
+  const r=await fetch(process.env.PROFILE_HUB_URL+endpoint,{method:'POST',headers:signHubRequest(process.env.PROFILE_HUB_SECRET,body,undefined,undefined,process.env.PROFILE_HUB_CLIENT),body,signal:AbortSignal.timeout(10000)});
+  await r.body?.cancel();
+  if(r.status!==422)throw Error('Shared profile client contract failed: HTTP '+r.status);
+  console.log(JSON.stringify({dependency:'profile-hub',endpoint,authenticated:true,ok:true}));
+ }catch(e){report('profile-hub'+endpoint,e);}
+}
+try{
+ if(process.env.TASHAN_SSO_ORIGIN!==process.env.PUBLIC_ORIGIN||!process.env.TASHAN_SSO_CLIENT_ID||!process.env.TASHAN_SSO_CLIENT_SECRET)throw Error('Site SSO configuration is missing');
+ const r=await fetch(process.env.TASHAN_SSO_API_BASE+'/auth/sso/session/check',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({client_id:process.env.TASHAN_SSO_CLIENT_ID,client_secret:process.env.TASHAN_SSO_CLIENT_SECRET,session_token:randomBytes(32).toString('base64url')}),signal:AbortSignal.timeout(15000),redirect:'error'});
+ const data=await r.json();
+ if(r.status!==200||data.active!==false)throw Error('SSO client validation failed: HTTP '+r.status);
+ console.log(JSON.stringify({dependency:'tashan-sso',clientAuthenticated:true,ok:true}));
+}catch(e){report('tashan-sso',e);}

@@ -18,18 +18,24 @@ export function createAutomaticProfiles({db,hub}){
    db.prepare('DELETE FROM profile_sync_jobs WHERE id=?').run(row.id);
   }
  }
- return {
-  async load(owner){
-   if(!hub)return null;
+ async function read(owner){
+   if(!hub)return {profile:null,status:{enabled:false,available:false}};
    return enqueue(async()=>{
     try{
-     await flush(owner);
+     let pendingWrite=false;
+     try{await flush(owner);}catch{pendingWrite=true;}
      // Other sites can update the hub between two requests from the same session.
      const answer=await hub.sync(payload(owner));
-     return apply(owner,answer);
-    }catch{return null;} // Profile availability must never decide login/registration success.
+     return {profile:apply(owner,answer),status:{enabled:true,available:true,pendingWrite}};
+    }catch(e){
+     console.warn('Profile hub read failed:',Number.isInteger(e.status)?e.status:503);
+     return {profile:null,status:{enabled:true,available:false}};
+    } // Profile availability must never decide login/registration success.
    });
-  },
+ }
+ return {
+  read,
+  async load(owner){return (await read(owner)).profile;},
   submitted(owner,record){
    if(!hub||record.kind!=='registration')return;
    const changes=Object.fromEntries(Object.entries(mapping).filter(([key])=>typeof record.data[key]==='string'&&record.data[key].trim()).map(([key,field])=>[field,record.data[key].trim()]));

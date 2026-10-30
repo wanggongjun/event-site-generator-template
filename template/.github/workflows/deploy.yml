@@ -61,5 +61,7 @@ jobs:
             const response=await fetch(origin+path,{redirect:'error',signal:AbortSignal.timeout(20000)});
             if(response.status!==status)throw Error('Unexpected production response: '+path+' '+response.status);
           }
+          const sso=await (await fetch(origin+'/api/forum/sso/status',{signal:AbortSignal.timeout(20000)})).json();
+          if(sso.enabled!==true)throw Error('SSO login entry was not enabled');
           console.log('Published and verified: '+origin);
           JS
