@@ -47,7 +47,8 @@ jobs:
           camp_remote="/tmp/kiz-ai-camp-2026-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           camp_ssh=(-i ~/.ssh/camp_key -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=15)
           ssh "${camp_ssh[@]}" "$camp_target" "umask 077; mkdir -p '$camp_remote'"
-          scp "${camp_ssh[@]}" camp-release.tar.gz camp-release.tar.gz.sha256 ops/camp-deploy.py "$camp_target:$camp_remote/"
+          scp "${camp_ssh[@]}" camp-release.tar.gz camp-release.tar.gz.sha256 ops/camp-deploy.py ops/camp-diagnose.mjs "$camp_target:$camp_remote/"
+          ssh "${camp_ssh[@]}" "$camp_target" "/opt/events/kiz-ai-camp-2026/production/current/node --env-file=/opt/events/kiz-ai-camp-2026/production/shared/app.env '$camp_remote/camp-diagnose.mjs'"
           ssh "${camp_ssh[@]}" "$camp_target" "python3 '$camp_remote/camp-deploy.py' '$camp_remote' '$GITHUB_SHA'"
       - name: Verify published revision and account routing
         run: |
