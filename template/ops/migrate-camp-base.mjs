@@ -205,11 +205,6 @@ for (const [key, sourceId] of Object.entries(sourceTables)) {
     );
     if (!identity || matches.length > 1)
       throw Error("Migration business key is missing or duplicated");
-    await target.write(targetTables[key], fields, matches[0]?.record_id);
-    destinationRows = await target.rows(targetTables[key]);
-    const verified = destinationRows.filter(
-      (record) => feishuText(record.fields[primary]) === identity,
-    );
     const normalize = (record) =>
       Object.fromEntries(
         Object.keys(fields)
@@ -223,12 +218,23 @@ for (const [key, sourceId] of Object.entries(sourceTables)) {
                 : feishuText(record[name]),
           ]),
       );
-    if (
-      verified.length !== 1 ||
-      JSON.stringify(normalize(fields)) !==
-        JSON.stringify(normalize(verified[0].fields))
-    )
+    const expected = normalize(fields);
+    if (matches.length === 1 && JSON.stringify(expected) === JSON.stringify(normalize(matches[0].fields))) continue;
+    await target.write(targetTables[key], fields, matches[0]?.record_id);
+    let verified = [], valid = false;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      if (attempt) await new Promise(resolve => setTimeout(resolve, 1000));
+      destinationRows = await target.rows(targetTables[key]);
+      verified = destinationRows.filter(record => feishuText(record.fields[primary]) === identity);
+      valid = verified.length === 1 && JSON.stringify(expected) === JSON.stringify(normalize(verified[0].fields));
+      if (valid) break;
+    }
+    if (!valid) {
+      const actual = verified[0] ? normalize(verified[0].fields) : {};
+      const differences = Object.keys(expected).filter(name => JSON.stringify(expected[name]) !== JSON.stringify(actual[name])).map(name => ({field:name,expectedType:typeof expected[name],actualType:typeof actual[name],expectedLength:JSON.stringify(expected[name])?.length,actualLength:JSON.stringify(actual[name])?.length}));
+      console.error(JSON.stringify({stage:'migration-verification',table:key,key:key==='settings'?identity:undefined,matches:verified.length,differences}));
       throw Error("Migrated row verification failed: " + key);
+    }
   }
   console.log("Migrated and verified " + key + ": " + sourceRows.length);
 }
