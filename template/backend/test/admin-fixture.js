@@ -23,11 +23,14 @@ export async function fixture({
   );
   let writes = 0,
     failAfter = Infinity;
+  let delayNext = false;
+  const staleReads = new Map();
   const cmsClient = {
-    rows: async (key) => structuredClone(tables[key]),
+    rows: async (key) => {const stale=staleReads.get(key);staleReads.delete(key);return structuredClone(stale || tables[key]);},
     write: async (key, fields, id) => {
       if (++writes === failAfter)
         throw Error("Simulated upstream interruption");
+      if(delayNext){staleReads.set(key,structuredClone(tables[key]));delayNext=false;}
       const row = tables[key].find((row) => row.record_id === id);
       if (row) Object.assign(row.fields, fields);
       else
@@ -132,6 +135,7 @@ export async function fixture({
     failNext: () => {
       failAfter = writes + 2;
     },
+    delayNextRead: () => {delayNext=true;},
     close: async () => {
       await server.shutdown();
       await rm(dir, { recursive: true, force: true });

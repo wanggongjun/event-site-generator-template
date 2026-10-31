@@ -52,6 +52,7 @@ test("administrator auth, publish conflict, recoverable save and review version 
       ).status,
       409,
     );
+    f.delayNextRead();
     const resumed = await (await f.request("resume", {})).json();
     assert.equal(resumed.pending, false);
     assert.equal(

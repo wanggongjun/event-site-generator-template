@@ -218,16 +218,15 @@ export function createCmsAdmin({
         )
           fail(409, "保存期间飞书内容被修改，请联系管理员核对未完成的保存");
         await client.write(tables[key], row.fields, existing?.record_id);
-        remote = await client.rows(tables[key]);
-        const verified = remote.find((item) =>
-          existing
-            ? item.record_id === existing.record_id
-            : feishuText(item.fields[primary]) === row.fields[primary],
-        );
-        if (
-          !verified ||
-          hash(normalized(verified.fields)) !== hash(normalized(row.fields))
-        )
+        let verified = false;
+        for (let attempt = 0; attempt < 5; attempt++) {
+          if (attempt) await new Promise(resolve => setTimeout(resolve, 1000));
+          remote = await client.rows(tables[key]);
+          const saved = remote.find(item => existing ? item.record_id === existing.record_id : feishuText(item.fields[primary]) === row.fields[primary]);
+          verified = Boolean(saved) && hash(normalized(saved.fields)) === hash(normalized(row.fields));
+          if (verified) break;
+        }
+        if (!verified)
           fail(503, "保存结果尚未确认，请恢复此次保存");
       }
     }
