@@ -17,6 +17,17 @@ const save = () => {
   renameSync(checkpoint + ".tmp", checkpoint);
 };
 const sha = (value) => createHash("sha256").update(value).digest("hex");
+async function migrationTransport(url, options = {}) {
+  const canRetry = !options.method || options.method === "GET" || url.endsWith("/auth/v3/tenant_access_token/internal");
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fetch(url, {...options, headers: {...options.headers, connection: "close"}});
+    } catch (error) {
+      if (!canRetry || attempt >= 2 || error.name === "TimeoutError") throw error;
+      await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
+    }
+  }
+}
 if (state.complete) {
   console.log("Independent camp Base already configured");
   process.exit(0);
@@ -30,6 +41,8 @@ const sourceCms = JSON.parse(
 const sourceEnv = { ...process.env, ...sourceIds };
 const source = new CmsFeishu(sourceEnv),
   sourceFiles = new ForumFeishu(sourceEnv);
+source.transport = migrationTransport;
+sourceFiles.transport = migrationTransport;
 const control = await source.rows(sourceCms.tables.control);
 if (control.length !== 1 || feishuText(control[0].fields["操作"]) !== "待命")
   throw Error("Complete the pending CMS publication before migrating");
@@ -68,6 +81,8 @@ for (const [script, file] of [
 }
 const target = new CmsFeishu(destinationEnv),
   targetFiles = new ForumFeishu(destinationEnv);
+target.transport = migrationTransport;
+targetFiles.transport = migrationTransport;
 const targetCms = JSON.parse(
   readFileSync(resolve(shared, "cms-ids-independent.json"), "utf8"),
 );
