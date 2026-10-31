@@ -455,7 +455,7 @@ export function Admin() {
                   name="password"
                   type="password"
                   autoComplete="new-password"
-                  minLength={12}
+                  minLength={8}
                   maxLength={128}
                   required
                 />
@@ -466,7 +466,7 @@ export function Admin() {
                   name="confirm"
                   type="password"
                   autoComplete="new-password"
-                  minLength={12}
+                  minLength={8}
                   required
                 />
               </label>

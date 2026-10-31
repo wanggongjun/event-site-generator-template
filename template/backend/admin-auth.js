@@ -160,12 +160,12 @@ export async function createAdminAuth({ db, env }) {
         const input = await body(req, 4096);
         if (
           typeof input.password !== "string" ||
-          input.password.length < 12 ||
+          input.password.length < 8 ||
           input.password.length > 128 ||
           typeof input.currentPassword !== "string" ||
           input.currentPassword.length > 256
         )
-          fail(400, "新密码请使用12—128个字符");
+          fail(400, "新密码请使用8—128个字符");
         const reset = limit(req, username);
         if (
           !(await matches(
