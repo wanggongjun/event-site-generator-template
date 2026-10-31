@@ -19,6 +19,15 @@
 }
 .public-shell .event-banner--background .event-banner__title { color:#fff; text-shadow:0 2px 5px rgb(0 32 55 / 35%); }
 .public-shell .event-banner--background .event-banner__meta { color:#fff; }
+/* Keep the title and dates above the bright ribbon without shifting the image or logo. */
+.public-shell .event-banner--background .event-banner__title,
+.public-shell .event-banner--background .event-banner__tagline,
+.public-shell .event-banner--background .event-banner__meta { transform:translateY(-24px); }
+@media(max-width:767px) {
+  .public-shell .event-banner--background .event-banner__title,
+  .public-shell .event-banner--background .event-banner__tagline,
+  .public-shell .event-banner--background .event-banner__meta { transform:translateY(-14px); }
+}
 .public-shell .event-footer { background:#123e52; }
 .public-shell .mobile-service-bar__entry { background:var(--panshi-color-primary); box-shadow:inset 0 1px rgb(255 255 255 / 26%),0 5px 14px rgb(0 65 95 / 20%); }
 .public-shell .mobile-service-bar__details span { border-color:var(--panshi-color-primary); }
