@@ -24,6 +24,11 @@
 .public-shell .event-banner--background .event-banner__tagline,
 .public-shell .event-banner--background .event-banner__meta { transform:translateY(-24px); }
 @media(max-width:767px) {
+  .public-shell .event-banner.event-banner--background {
+    /* Narrow screens crop the image sides; top anchoring moves the ribbon down. */
+    background-size:auto 130%;
+    background-position:center top;
+  }
   .public-shell .event-banner--background .event-banner__title,
   .public-shell .event-banner--background .event-banner__tagline,
   .public-shell .event-banner--background .event-banner__meta { transform:translateY(-14px); }
