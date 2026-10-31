@@ -41,7 +41,7 @@ function ContactList({contacts=config.contacts}:{contacts?:PersonContact[]}){
 }
 function Organizations(){
  return <>{[...new Set(config.home.organizers.map(x=>x.role))].map(role=>
-  <p key={role} style={{whiteSpace:'pre-line'}}>{role}：{config.home.organizers.filter(x=>x.role===role).map(x=>x.name).join('\n')}</p>)}</>;
+  <p key={role}>{role}：{config.home.organizers.filter(x=>x.role===role).map(x=>x.name).join('、')}</p>)}</>;
 }
 function Courses(){
  return <>{config.notices?.filter(x=>/^第\d+课/.test(x.title)).map(x=>

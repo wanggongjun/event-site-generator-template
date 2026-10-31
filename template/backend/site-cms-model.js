@@ -27,7 +27,7 @@ export function seedCms(config){
  const sections=rows=>paras(rows.map(([title,body])=>'## '+title+'\n\n'+body));
  const notices=titles=>paras(titles.map(title=>n(title)?'**'+title+'**：'+n(title):''));
  const contacts=sections(config.contacts.map(x=>[x.responsibility,paras([x.name,x.email?`[${x.email}](mailto:${x.email})`:'',x.phone,x.note])]));
- const organizations=[...new Set(config.home.organizers.map(x=>x.role))].map(role=>role+'：'+config.home.organizers.filter(x=>x.role===role).map(x=>x.name).join('\n')).join('\n\n');
+ const organizations=[...new Set(config.home.organizers.map(x=>x.role))].map(role=>role+'：'+config.home.organizers.filter(x=>x.role===role).map(x=>x.name).join('、')).join('\n\n');
  const agenda='| 日期 | 时间 | 内容 | 主讲人 | 地点 |\n| --- | --- | --- | --- | --- |\n'+config.agenda.map(x=>'| '+[x.date,x.time,x.title,x.speaker||'',x.location||''].map(s=>String(s).replaceAll('|','／').replaceAll('\n',' ')).join(' | ')+' |').join('\n');
  const courses=sections(config.notices.filter(x=>/^第\d+课/.test(x.title)).map(x=>[x.title,x.body]));
  const home=sections([
