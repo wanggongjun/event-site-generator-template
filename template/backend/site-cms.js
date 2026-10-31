@@ -46,6 +46,35 @@ export async function createSiteCms({db,env,config}){
    live=version(id);console.log(JSON.stringify({themePatch:patch.id,ok:true}));
   }
  }
+ // Update the requested organization copy in Feishu and the live snapshot only once.
+ if(env.CMS_ORGANIZATION_PATCH==='organizations-20261031'&&!get('patch:organizations-20261031')){
+  const controls=await client.rows(tables.control);if(controls.length!==1||feishuText(controls[0].fields['操作'])!=='待命'||get('pendingResult'))throw Error('Finish pending publishing before updating organizations');
+  const rewrite=body=>{
+   const pattern=/^协办单位：[^\r\n]+(?:(?:\r?\n){2}协办单位：[^\r\n]+|\r?\n(?!\r?\n|#)[^\r\n]+)*/m;
+   const match=body.match(pattern);if(!match)throw Error('Organization section was not found');
+   const names=match[0].split(/\r?\n/).map(x=>x.replace(/^协办单位：/,'').trim()).filter(Boolean);
+   const group='协办单位：'+[...new Set([...names,'阿里云','他山科学智能社区'])].join('\n');
+   // Accept an already applied update when retrying a partial Feishu write.
+   if(body.includes(group))return body;
+   return body.replace(pattern,group);
+  };
+  const rows=await client.rows(tables.pages),updates=[];
+  for(const path of ['/','/about']){
+   const matches=rows.filter(r=>feishuText(r.fields['页面路径'])===path);if(matches.length!==1)throw Error('Organization page must be unique');
+   updates.push({row:matches[0],body:rewrite(feishuText(matches[0].fields['正文']))});
+  }
+  const payload=structuredClone(live.payload);
+  for(const path of ['/','/about']){const page=payload.pages.find(p=>p.path===path);if(!page)throw Error('Published organization page missing');page.body=rewrite(page.body);}
+  const settings=await client.rows(tables.settings),support=settings.filter(r=>feishuText(r.fields['设置标识'])==='technicalSupport');if(support.length>1)throw Error('Technical support setting must be unique');
+  for(const u of updates)await client.write(tables.pages,{'正文':u.body},u.row.record_id);
+  await client.write(tables.settings,{'设置标识':'technicalSupport','名称':'页脚技术支持','内容':'他山科学智能社区','填写说明':'显示在页脚主办单位下方；修改后生成预览并发布。'},support[0]?.record_id);
+  payload.config.branding.technicalSupport='他山科学智能社区';payload.settings.technicalSupport='他山科学智能社区';
+  const id='content-organizations-20261031',at=new Date().toISOString();
+  db.prepare('INSERT OR IGNORE INTO cms_versions(id,payload,createdAt) VALUES(?,?,?)').run(id,JSON.stringify(payload),at);
+  await history({...version(id),action:'组织单位更新',source:live.id});
+  await client.write(tables.control,{'当前版本':id,'预览链接':'','待发布版本':'','处理结果':'协办单位及页脚技术支持已更新。其他草稿未发布。','更新时间':at},controls[0].record_id);
+  activate(id,'组织单位更新',live.id);set('preview',null);set('patch:organizations-20261031',true);
+ }
  async function poll(){if(busy||closing)return;busy=true;let control;try{
   const controls=await client.rows(tables.control);if(controls.length!==1)validation('网站发布表必须且只能保留一行');control=controls[0];const command=feishuText(control.fields['操作']);
   const existing=get('pendingResult');if(existing){if(command!=='待命')await client.write(tables.control,existing.fields,existing.recordId);set('pendingResult',null);await history(live);return;}

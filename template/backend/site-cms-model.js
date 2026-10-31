@@ -27,7 +27,7 @@ export function seedCms(config){
  const sections=rows=>paras(rows.map(([title,body])=>'## '+title+'\n\n'+body));
  const notices=titles=>paras(titles.map(title=>n(title)?'**'+title+'**：'+n(title):''));
  const contacts=sections(config.contacts.map(x=>[x.responsibility,paras([x.name,x.email?`[${x.email}](mailto:${x.email})`:'',x.phone,x.note])]));
- const organizations=config.home.organizers.map(x=>x.role+'：'+x.name).join('\n\n');
+ const organizations=[...new Set(config.home.organizers.map(x=>x.role))].map(role=>role+'：'+config.home.organizers.filter(x=>x.role===role).map(x=>x.name).join('\n')).join('\n\n');
  const agenda='| 日期 | 时间 | 内容 | 主讲人 | 地点 |\n| --- | --- | --- | --- | --- |\n'+config.agenda.map(x=>'| '+[x.date,x.time,x.title,x.speaker||'',x.location||''].map(s=>String(s).replaceAll('|','／').replaceAll('\n',' ')).join(' | ')+' |').join('\n');
  const courses=sections(config.notices.filter(x=>/^第\d+课/.test(x.title)).map(x=>[x.title,x.body]));
  const home=sections([
@@ -40,7 +40,7 @@ export function seedCms(config){
  const privacy=paras(['主办单位：'+config.home.organizers.filter(x=>['主办单位','主办'].includes(x.role)).map(x=>x.name).join('、')+'。报名资料用于本次培训的身份核验、会务联络、签到、缴费核对、发票开具及证书办理。','姓名、手机号、邮箱、单位、身份、证明材料和开票资料仅提供给办理相关事务的授权工作人员。身份材料通过私有存储保存，不作为公开资料发布。','账号使用他山统一认证；姓名、单位、专业、研究方向、邮箱和院系等通用资料可从关联服务读取，并在提交报名后同步。发票、饮食、证明材料等本次活动专属资料不写入通用资料库。','饮食禁忌和希望解决的问题为选填，请勿填写与培训无关的敏感信息。需要更正或删除报名资料，请联系会务组；依法需要留存的财务记录按相关要求处理。']);
  const pages=[['/','首页',home],['/register','在线报名',''],['/fees','费用与发票',sections(['收费标准','对公转账','现场缴费','缴费确认','发票说明','退费与名额转让'].map(t=>[t,n(t)]))+'\n\n[在线报名](/register)'],['/travel','交通住宿',sections([['培训地点与报到',paras(['{{活动地点}}','{{园区地址}}',n('报到安排')])],...config.travel.directions.map(x=>[x.title,x.body]),['食宿指引',paras(config.mealGuide.map(x=>x.title+'：'+x.body))],['住宿信息',sections(config.hotels.map(x=>[x.name,paras([x.address,x.description])])).replaceAll('## ','### ')]])],['/contact','联系我们',contacts],['/faq','常见问题',sections(config.faqs.map(x=>[x.question,x.question==='费用是多少？'?n('收费标准'):x.answer]))],['/account','个人中心',''],['/privacy','报名信息使用说明','## 报名信息使用说明\n\n'+privacy],['/about','培训介绍',paras([...config.home.intro,config.home.target,organizations])],['/agenda','日程安排',agenda],['/courses','课程介绍',courses]];
  const specs=[
- ['title','活动名称',config.event.title],['shortTitle','活动简称',config.event.shortTitle],['subtitle','副标题',config.event.subtitle],
+ ['title','活动名称',config.event.title],['shortTitle','活动简称',config.event.shortTitle],['subtitle','副标题',config.event.subtitle],['technicalSupport','页脚技术支持',config.branding.technicalSupport||''],
  ['startDate','开始日期',config.event.startDate,'YYYY-MM-DD'],['endDate','结束日期',config.event.endDate,'YYYY-MM-DD'],['location','活动地点',config.event.location],['address','园区地址',config.travel.address],
  ['closeAt','报名截止',config.attendance.closeAt,'北京时间，例如 2026-11-21 00:00'],['primaryColor','主题颜色',config.branding.primaryColor,'例如 #4CAF93'],
  ['banner','首页横幅',config.branding.backgroundImage,'直接向图片列上传 PNG/JPG/WebP；不要粘贴飞书临时下载链接。'],['logo','左上角标志',config.brandmarks?.[0]?.asset||'','图片列上传透明 PNG。'],
@@ -57,7 +57,9 @@ export function compileCms(rows,base,priorFields=[]){
  const config=structuredClone(base),settings={};
  const allowed=new Set(seedCms(base).settings.map(r=>r['设置标识']));
  for(const r of rows.settings){const key=val(r,'设置标识');if(!allowed.has(key)||Object.hasOwn(settings,key))fail('网站设置标识无效或重复：'+key);settings[key]=clean(val(r,'内容'),10000,key);}
+ if(!Object.hasOwn(settings,'technicalSupport'))settings.technicalSupport=config.branding.technicalSupport||'';
  for(const key of allowed)if(!Object.hasOwn(settings,key))fail('网站设置缺少：'+key);
+ config.branding.technicalSupport=settings.technicalSupport;
  for(const key of ['title','shortTitle','location']){if(!settings[key])fail(key+'不能为空');config.event[key]=settings[key];}
  config.event.subtitle=settings.subtitle;config.travel.address=settings.address;
  for(const key of ['startDate','endDate']){if(!/^\d{4}-\d{2}-\d{2}$/.test(settings[key])||!Number.isFinite(Date.parse(settings[key]))||new Date(settings[key]).toISOString().slice(0,10)!==settings[key])fail('日期应为有效的 YYYY-MM-DD');config.event[key]=settings[key];}

@@ -41,7 +41,7 @@ function ContactList({contacts=config.contacts}:{contacts?:PersonContact[]}){
 }
 function Organizations(){
  return <>{[...new Set(config.home.organizers.map(x=>x.role))].map(role=>
-  <p key={role}>{role}：{config.home.organizers.filter(x=>x.role===role).map(x=>x.name).join('、')}</p>)}</>;
+  <p key={role} style={{whiteSpace:'pre-line'}}>{role}：{config.home.organizers.filter(x=>x.role===role).map(x=>x.name).join('\n')}</p>)}</>;
 }
 function Courses(){
  return <>{config.notices?.filter(x=>/^第\d+课/.test(x.title)).map(x=>
@@ -137,7 +137,7 @@ export function App({preview=false}:{preview?:boolean}={}){
   </div>
   <MobileServiceDock entry={entry}>{datesCard}</MobileServiceDock>
   <footer className="event-footer"><div className="event-container event-footer__grid">
-   <section><h2>{config.event.shortTitle}</h2><p>主办单位：{organizers.map(x=>x.name).join('、')}</p><p>{config.event.subtitle}</p></section>
+   <section><h2>{config.event.shortTitle}</h2><p>主办单位：{organizers.map(x=>x.name).join('、')}</p>{config.branding.technicalSupport&&<p>技术支持：{config.branding.technicalSupport}</p>}<p>{config.event.subtitle}</p></section>
    <section><h2>联系咨询</h2>{sourceConfig.cmsFooterContacts!==undefined?<p style={{whiteSpace:'pre-line'}}>{sourceConfig.cmsFooterContacts}</p>:[...new Set(config.contacts.map(x=>x.responsibility))].map(group=><div className="event-footer__contact" key={group}><strong>{group}</strong>{config.contacts.filter(x=>x.responsibility===group).map(x=><span key={x.name}>{x.name} {x.email||x.phone}</span>)}</div>)}</section>
    <nav aria-label="页脚导航"><h2>快速入口</h2><Link to="/">活动首页</Link><Link to="/register">在线报名</Link><Link to="/fees">费用与发票</Link><Link to="/account">个人中心</Link><Link to="/privacy">报名信息使用说明</Link></nav>
   </div><div className="event-container event-footer__legal"><span>© {config.event.startDate.slice(0,4)} {config.event.shortTitle}会务组</span></div></footer>
