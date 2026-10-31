@@ -1,7 +1,7 @@
 """Provision and release only kiz-ai-camp-2026 on the authorized shared host.
 Secrets stay on the host. Existing sites, registration rows and services are untouched.
 """
-import base64,datetime,hashlib,hmac,json,os,pathlib,pwd,re,secrets,shutil,socket,subprocess,sys,time,urllib.parse,urllib.request,urllib.error,uuid
+import atexit,base64,datetime,hashlib,hmac,json,os,pathlib,pwd,re,secrets,shutil,socket,sqlite3,subprocess,sys,time,urllib.parse,urllib.request,urllib.error,uuid
 SLUG='kiz-ai-camp-2026';DOMAIN=SLUG+'.tashan.ac.cn';PORT=18316
 base=pathlib.Path('/opt/events')/SLUG/'production';shared=base/'shared'
 upload=pathlib.Path(sys.argv[1]);revision=sys.argv[2]
@@ -72,12 +72,33 @@ keypath=shared/'oss-identity.json'
 if not keypath.exists():atomic(keypath,json.dumps(checked('CreateAccessKey',UserName=name)['AccessKey']))
 key=json.loads(keypath.read_text())
 print('Dedicated storage identity configured',flush=True)
-# Separate tables in the authorized existing Base; no old table writes.
+# Provision the dedicated Base, then migrate only this camp's tables.
 feishu={k:old[k] for k in ['FEISHU_APP_ID','FEISHU_APP_SECRET','FORUM_FEISHU_BASE_TOKEN']}
-run([str(node),'ops/provision-feishu.mjs',str(shared/'feishu-ids.json')],cwd=release,env={**os.environ,**feishu})
-ids=json.loads((shared/'feishu-ids.json').read_text())
-run([str(node),'ops/provision-cms.mjs',str(shared/'cms-ids.json')],cwd=release,env={**os.environ,**feishu,**ids,'FORUM_FEISHU_API_VERSION':old.get('FORUM_FEISHU_API_VERSION','v3')})
-cmsids=json.loads((shared/'cms-ids.json').read_text())
+migration_file=shared/'independent-base.json'
+migration_state=json.loads(migration_file.read_text()) if migration_file.exists() else {}
+deployment_accepted=False
+if not migration_state.get('complete'):
+ previous_app_env=(shared/'app.env').read_text()
+ run(['systemctl','stop',SLUG])
+ migration_backup=shared/('pre-admin-'+str(int(time.time()))+'.sqlite')
+ with sqlite3.connect(shared/'data/recovery.sqlite') as source_db:
+  with sqlite3.connect(migration_backup) as backup_db:source_db.backup(backup_db)
+ migration_backup.chmod(0o600)
+ def restore_migration_on_failure():
+  if deployment_accepted:return
+  subprocess.run(['systemctl','stop',SLUG],stdout=subprocess.DEVNULL)
+  with sqlite3.connect(migration_backup) as source_db:
+   with sqlite3.connect(shared/'data/recovery.sqlite') as restored_db:source_db.backup(restored_db)
+  atomic(shared/'app.env',previous_app_env)
+  previous_user=pwd.getpwnam(SLUG);os.chown(shared/'app.env',previous_user.pw_uid,previous_user.pw_gid)
+  if migration_file.exists():
+   failed_state=json.loads(migration_file.read_text());failed_state['complete']=False;atomic(migration_file,json.dumps(failed_state))
+  subprocess.run(['systemctl','start',SLUG],stdout=subprocess.DEVNULL)
+  print('Original camp data connection restored after unsuccessful migration deployment',flush=True)
+ atexit.register(restore_migration_on_failure)
+run([str(node),'ops/migrate-camp-base.mjs',str(shared)],cwd=release,env={**os.environ,**feishu,'FORUM_FEISHU_API_VERSION':old.get('FORUM_FEISHU_API_VERSION','v3')})
+ids=json.loads((shared/'feishu-ids-independent.json').read_text());feishu['FORUM_FEISHU_BASE_TOKEN']=ids['FORUM_FEISHU_BASE_TOKEN']
+cmsids=json.loads((shared/'cms-ids-independent.json').read_text())
 # Separate profile API process/client, sharing the established central profiles.
 # No replacement or restart of the existing profile API or authentication service.
 secretpath=shared/'profile-secret'
@@ -125,6 +146,10 @@ data=shared/'data';data.mkdir(exist_ok=True,mode=0o700);os.chown(data,user.pw_ui
 run(['python3',str(release/'ops/camp-sso-provision.py')])
 sso=envfile(shared/'tashan-sso.env');os.chown(shared/'tashan-sso.env',user.pw_uid,user.pw_gid)
 runtime={**feishu,**ids,**sso,'CMS_ORGANIZATION_PATCH':'organizations-inline-20261031','CMS_THEME_PATCH':json.dumps({'id':'clear-e-20261031','banner':'/assets/assets/kiz-banner-clear-e.png'},separators=(',',':')),'CMS_TABLES':json.dumps(cmsids['tables'],separators=(',',':')),'NODE_ENV':'production','INTEGRATION_MODE':'tashan','DEPLOY_ENV':'production','PUBLIC_ORIGIN':'https://'+DOMAIN,'PORT':str(PORT),'FORUM_DATA_DIR':str(data),'AUTH_SERVICE_URL':'https://panshi-ai4s-new.tashan.ac.cn','FORUM_FEISHU_API_VERSION':old.get('FORUM_FEISHU_API_VERSION','v3'),'FORUM_OSS_BUCKET':storage['FILE_OSS_BUCKET'],'FORUM_OSS_REGION':storage['FILE_OSS_REGION'],'FORUM_OSS_PREFIX':prefix,'FORUM_OSS_ACCESS_KEY_ID':key['AccessKeyId'],'FORUM_OSS_ACCESS_KEY_SECRET':key['AccessKeySecret'],'PROFILE_HUB_URL':'http://127.0.0.1:18914/api/v1/profile-hub','PROFILE_HUB_ALLOW_LOOPBACK_HTTP':'1','PROFILE_HUB_CLIENT':SLUG,'PROFILE_HUB_SECRET':hubsecret}
+bootstrap=upload/'admin-bootstrap.json'
+if bootstrap.exists():runtime['CAMP_ADMIN_BOOTSTRAP']=json.dumps(json.loads(bootstrap.read_text()),separators=(',',':'));bootstrap.unlink()
+elif envfile(shared/'app.env').get('CAMP_ADMIN_BOOTSTRAP'):runtime['CAMP_ADMIN_BOOTSTRAP']=envfile(shared/'app.env')['CAMP_ADMIN_BOOTSTRAP']
+else:raise RuntimeError('Administrator bootstrap is missing')
 # Reuse the original forum's authorized API generation and verify record reads before cutover.
 run([str(node),str(release/'ops/camp-readiness.mjs')],env={**os.environ,**runtime})
 saveenv(shared/'app.env',runtime);os.chown(shared/'app.env',user.pw_uid,user.pw_gid)
@@ -231,6 +256,7 @@ WantedBy=multi-user.target
  run(['systemctl','enable','--now',service+'-backup.timer',service+'-tls.timer'],stdout=subprocess.DEVNULL)
  run(['systemctl','start',service+'-backup.service'])
  atomic(base/'accepted-revision',revision+'\n')
+ deployment_accepted=True
  print('Published https://'+DOMAIN,flush=True)
 except Exception:
  if previous:

@@ -42,7 +42,7 @@ export function seedCms(config){
  const specs=[
  ['title','活动名称',config.event.title],['shortTitle','活动简称',config.event.shortTitle],['subtitle','副标题',config.event.subtitle],['technicalSupport','页脚技术支持',config.branding.technicalSupport||''],
  ['startDate','开始日期',config.event.startDate,'YYYY-MM-DD'],['endDate','结束日期',config.event.endDate,'YYYY-MM-DD'],['location','活动地点',config.event.location],['address','园区地址',config.travel.address],
- ['closeAt','报名截止',config.attendance.closeAt,'北京时间，例如 2026-11-21 00:00'],['primaryColor','主题颜色',config.branding.primaryColor,'例如 #4CAF93'],
+ ['openAt','报名开放',config.attendance.openAt||'','北京时间；留空表示立即开放。'],['closeAt','报名截止',config.attendance.closeAt,'北京时间，例如 2026-11-21 00:00'],['primaryColor','主题颜色',config.branding.primaryColor,'例如 #4CAF93'],
  ['banner','首页横幅',config.branding.backgroundImage,'直接向图片列上传 PNG/JPG/WebP；不要粘贴飞书临时下载链接。'],['logo','左上角标志',config.brandmarks?.[0]?.asset||'','图片列上传透明 PNG。'],
  ['organizers','页脚主办单位',config.home.organizers.filter(x=>['主办单位','主办'].includes(x.role)).map(x=>x.name).join('、')],['contacts','页脚联系咨询',config.contacts.map(x=>`${x.responsibility}：${x.name} ${x.email||x.phone||''}`).join('\n')],['feeNotice','报名页收费提示',n('收费标准')]
  ];
@@ -58,6 +58,7 @@ export function compileCms(rows,base,priorFields=[]){
  const allowed=new Set(seedCms(base).settings.map(r=>r['设置标识']));
  for(const r of rows.settings){const key=val(r,'设置标识');if(!allowed.has(key)||Object.hasOwn(settings,key))fail('网站设置标识无效或重复：'+key);settings[key]=clean(val(r,'内容'),10000,key);}
  if(!Object.hasOwn(settings,'technicalSupport'))settings.technicalSupport=config.branding.technicalSupport||'';
+ if(!Object.hasOwn(settings,'openAt'))settings.openAt=config.attendance.openAt||'';
  for(const key of allowed)if(!Object.hasOwn(settings,key))fail('网站设置缺少：'+key);
  config.branding.technicalSupport=settings.technicalSupport;
  for(const key of ['title','shortTitle','location']){if(!settings[key])fail(key+'不能为空');config.event[key]=settings[key];}
@@ -66,6 +67,7 @@ export function compileCms(rows,base,priorFields=[]){
  if(settings.endDate<settings.startDate)fail('结束日期不能早于开始日期');
  const deadline=settings.closeAt.replace(' ','T');const zoned=/[Zz]$|[+-]\d{2}:\d{2}$/.test(deadline)?deadline:deadline+(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(deadline)?':00':'')+'+08:00';
  if(!Number.isFinite(Date.parse(zoned)))fail('报名截止时间格式不正确');config.attendance.closeAt=zoned;config.attendance.autoClose=true;
+ if(settings.openAt){const open=settings.openAt.replace(' ','T');const openZoned=/[Zz]$|[+-]\d{2}:\d{2}$/.test(open)?open:open+(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(open)?':00':'')+'+08:00';if(!Number.isFinite(Date.parse(openZoned))||Date.parse(openZoned)>=Date.parse(zoned))fail('报名开放时间必须早于截止时间');config.attendance.openAt=openZoned;}else delete config.attendance.openAt;
  if(!/^#[a-fA-F0-9]{6}$/.test(settings.primaryColor))fail('主题颜色应为六位十六进制颜色');config.branding.primaryColor=settings.primaryColor;
  const localImage=value=>/^\/(?:assets|brand)\/[A-Za-z0-9_./-]+$/.test(value)||/^\/api\/site\/media\/[a-f0-9]{64}$/.test(value);
  if(!localImage(settings.banner)||settings.logo&&!localImage(settings.logo)||settings.banner.includes('..')||settings.logo.includes('..'))fail('图片请上传到图片列，不能使用临时链接');
@@ -80,8 +82,8 @@ export function compileCms(rows,base,priorFields=[]){
  for(const path of ['/','/register','/account','/privacy','/fees'])if(!pages.some(p=>p.path===path&&p.enabled))fail('必须保留并启用 '+path);
  if(pages.filter(p=>p.enabled&&p.nav).length>10)fail('导航最多显示10个栏目');if(pages.length>40)fail('页面最多40个');
  const fields=rows.questions.map(r=>{
-  const explicit=val(r,'字段标识');const builtin=builtinQuestions.find(q=>q.id===explicit);if(explicit&&!builtin)fail('新增问题请将字段标识留空，现有系统标识请勿修改');
-  const id=builtin?.id||'q_'+r.record_id,label=clean(val(r,'问题名称'),120,'问题名称'),type=val(r,'类型'),required=bool(r,'必填'),enabled=bool(r,'启用');
+  const explicit=val(r,'字段标识');const builtin=builtinQuestions.find(q=>q.id===explicit);if(explicit&&!builtin&&!/^q_[a-zA-Z0-9-]{1,80}$/.test(explicit))fail('报名字段标识无效');
+  const id=builtin?.id||explicit||'q_'+r.record_id,label=clean(val(r,'问题名称'),120,'问题名称'),type=val(r,'类型'),required=bool(r,'必填'),enabled=bool(r,'启用');
   if(!label)fail('问题名称不能为空');if(!builtin&&!['短文本','长文本','单选','多选','数字','日期'].includes(type))fail('新增问题类型不支持');if(builtin&&builtin.type!==type)fail('固定字段类型不能修改：'+label);
   const old=priorFields.find(q=>q.id===id);if(old&&old.type!==type)fail('已发布问题不能修改类型，请停用旧问题并新增');
   const options=val(r,'选项（每行一个）').split(/\r?\n/).map(x=>x.trim()).filter(Boolean);if(options.length>50||new Set(options).size!==options.length||options.some(x=>x.length>200))fail('选项不能重复，最多50项，每项200字');if(['单选','多选'].includes(type)&&!options.length)fail('选择题必须填写选项：'+label);

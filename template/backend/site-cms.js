@@ -2,11 +2,12 @@ import {randomBytes} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {CmsFeishu,feishuText} from './site-cms-feishu.js';
-import {compileCms,hash} from './site-cms-model.js';
+import {compileCms,hash,cmsTables} from './site-cms-model.js';
+import {createCmsAdmin} from './site-cms-admin.js';
 const validation=message=>{throw Object.assign(Error(message),{cmsValidation:true});};
-export async function createSiteCms({db,env,config}){
+export async function createSiteCms({db,env,config,client:providedClient}){
  if(!env.CMS_TABLES)return null;
- const tables=JSON.parse(env.CMS_TABLES),client=new CmsFeishu(env),origin=env.PUBLIC_ORIGIN;
+ const tables=JSON.parse(env.CMS_TABLES),client=providedClient??new CmsFeishu(env),origin=env.PUBLIC_ORIGIN;
  db.exec(`CREATE TABLE IF NOT EXISTS cms_state(key TEXT PRIMARY KEY,value TEXT NOT NULL);CREATE TABLE IF NOT EXISTS cms_versions(id TEXT PRIMARY KEY,payload TEXT NOT NULL,createdAt TEXT NOT NULL,published INTEGER NOT NULL DEFAULT 0,action TEXT,source TEXT);CREATE TABLE IF NOT EXISTS cms_images(id TEXT PRIMARY KEY,mime TEXT NOT NULL,bytes BLOB NOT NULL);`);
  const get=k=>{const x=db.prepare('SELECT value FROM cms_state WHERE key=?').get(k);return x?JSON.parse(x.value):null;};
  const set=(k,v)=>db.prepare('INSERT INTO cms_state VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(k,JSON.stringify(v));
@@ -14,7 +15,7 @@ export async function createSiteCms({db,env,config}){
  let live=version(get('current')),busy=false,closing=false,timer,active;
  const historyFields=()=>db.prepare('SELECT payload FROM cms_versions WHERE published=1').all().flatMap(r=>JSON.parse(r.payload).fields);
  const readRows=async()=>Object.fromEntries(await Promise.all(['settings','pages','questions'].map(async key=>[key,await client.rows(tables[key])])));
- const rowDigest=rows=>hash(Object.fromEntries(Object.entries(rows).map(([k,rs])=>[k,rs.map(r=>({record_id:r.record_id,fields:Object.fromEntries(Object.entries(r.fields).sort(([a],[b])=>a.localeCompare(b)))})).sort((a,b)=>a.record_id.localeCompare(b.record_id))])));
+ const rowDigest=rows=>hash(Object.fromEntries(Object.entries(rows).map(([key,items])=>[key,items.map(row=>({record_id:row.record_id,fields:cmsTables[key].fields.map(field=>[field.field_name,field.type===17?(row.fields[field.field_name]||[]).map(image=>image.file_token):field.type===2?Number(row.fields[field.field_name]||0):feishuText(row.fields[field.field_name])])})).sort((a,b)=>a.record_id.localeCompare(b.record_id))])));
  async function imageUrl(token){const cached=get('image:'+token);if(cached&&db.prepare('SELECT id FROM cms_images WHERE id=?').get(cached))return '/api/site/media/'+cached;const {bytes,mime}=await client.image(token),id=hash(bytes);db.prepare('INSERT OR IGNORE INTO cms_images VALUES(?,?,?)').run(id,mime,bytes);set('image:'+token,id);return '/api/site/media/'+id;}
  async function prepare(rows){const copied=structuredClone(rows);for(const row of copied.settings){const key=feishuText(row.fields['设置标识']),images=row.fields['图片'];if(!['banner','logo'].includes(key)){if(images?.length)validation('只有横幅和标志设置可以上传图片');continue;}if(images?.length>1)validation('每项请只上传一张图片');if(images?.length)row.fields['内容']=await imageUrl(images[0].file_token);}
   for(const row of copied.pages){const images=row.fields['图片']||[];if(images.length>6)validation('每个页面最多6张图片');row.cmsImages=[];for(const image of images)row.cmsImages.push(await imageUrl(image.file_token));}
@@ -79,6 +80,7 @@ export async function createSiteCms({db,env,config}){
   activate(id,'组织单位更新',live.id);set('preview',null);set('patch:'+organizationPatch,true);
  }
  async function poll(){if(busy||closing)return;busy=true;let control;try{
+  if(get('adminPending'))return;
   const controls=await client.rows(tables.control);if(controls.length!==1)validation('网站发布表必须且只能保留一行');control=controls[0];const command=feishuText(control.fields['操作']);
   const existing=get('pendingResult');if(existing){if(command!=='待命')await client.write(tables.control,existing.fields,existing.recordId);set('pendingResult',null);await history(live);return;}
   if(command==='待命'||!command){if(feishuText(control.fields['当前版本'])!==live.id)await client.write(tables.control,{'当前版本':live.id},control.record_id);await history(live);return;}
@@ -97,7 +99,14 @@ export async function createSiteCms({db,env,config}){
  timer=setInterval(()=>{if(!busy)active=poll();},30000);timer.unref();active=poll();
  function selected(token){if(!token)return live;const draft=get('preview');if(!draft||draft.token!==token||draft.expires<Date.now())return null;return version(draft.id);}
  function publicPayload(v,token){const payload=structuredClone(v.payload);delete payload.settings;delete payload.config.source;delete payload.config.sourceNotes;delete payload.config.readiness;delete payload.config.sync;delete payload.config.publicFiles;for(const key of ['heroWarning','heroBinding','heroSourceImage'])delete payload.config.branding[key];if(token){for(const p of payload.pages)p.images=(p.images||[]).map(url=>url+'?preview='+token);for(const key of ['backgroundImage'])if(payload.config.branding[key]?.startsWith('/api/site/media/'))payload.config.branding[key]+='?preview='+token;for(const b of payload.config.brandmarks||[])if(b.asset.startsWith('/api/site/media/'))b.asset+='?preview='+token;}return {...payload,revision:v.id,preview:Boolean(token)};}
- return {current:()=>live.payload,fields:revision=>{const found=db.prepare('SELECT payload FROM cms_versions WHERE published=1').all().map(r=>JSON.parse(r.payload)).find(p=>p.formRevision===revision);return found?.fields;},async handle(req,res,url,send){
+ async function exclusive(action){
+  if(busy&&active)await active;
+  if(busy||closing)throw Object.assign(Error('正在处理其他操作，请稍后重试'),{status:409});
+  busy=true;
+  try{return await action();}catch(error){if(error.cmsValidation)error.status=400;throw error;}finally{busy=false;}
+ }
+ const admin=createCmsAdmin({db,client,tables,config,get,set,readRows,rowDigest,prepare,activate,history,version,current:()=>live,historyFields,exclusive,origin});
+ return {admin,current:()=>live.payload,fields:revision=>{const found=db.prepare('SELECT payload FROM cms_versions WHERE published=1').all().map(r=>JSON.parse(r.payload)).find(p=>p.formRevision===revision);return found?.fields;},async handle(req,res,url,send){
   if(url.pathname==='/api/site/content'&&req.method==='GET'){const token=url.searchParams.get('preview'),v=selected(token);if(!v){send(res,404,{error:{message:'预览已过期，请在飞书重新生成。'}});return true;}send(res,200,publicPayload(v,token),{'x-robots-tag':token?'noindex, nofollow':'all'});return true;}
   const match=url.pathname.match(/^\/api\/site\/media\/([a-f0-9]{64})$/);if(match&&['GET','HEAD'].includes(req.method)){const v=selected(url.searchParams.get('preview'));const allowed=v&&[v.payload.config.branding.backgroundImage,...(v.payload.config.brandmarks||[]).map(x=>x.asset),...v.payload.pages.flatMap(p=>p.images||[])].includes(url.pathname);const image=allowed?db.prepare('SELECT mime,bytes FROM cms_images WHERE id=?').get(match[1]):null;if(!image){send(res,404,{error:{message:'图片不存在'}});return true;}res.writeHead(200,{'content-type':image.mime,'cache-control':url.searchParams.has('preview')?'private,no-store':'public,max-age=300','x-content-type-options':'nosniff'});res.end(req.method==='HEAD'?undefined:Buffer.from(image.bytes));return true;}
   return false;},async close(){closing=true;clearInterval(timer);await active;}};

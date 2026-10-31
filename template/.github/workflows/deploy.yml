@@ -36,6 +36,7 @@ jobs:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          CAMP_ADMIN_BOOTSTRAP: ${{ secrets.KIZ_ADMIN_BOOTSTRAP }}
         run: |
           set -euo pipefail
           test "$DEPLOY_HOST" = 8.147.58.40
@@ -47,6 +48,8 @@ jobs:
           camp_remote="/tmp/kiz-ai-camp-2026-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           camp_ssh=(-i ~/.ssh/camp_key -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=15)
           ssh "${camp_ssh[@]}" "$camp_target" "umask 077; mkdir -p '$camp_remote'"
+          test -n "$CAMP_ADMIN_BOOTSTRAP"
+          printf '%s' "$CAMP_ADMIN_BOOTSTRAP" | ssh "${camp_ssh[@]}" "$camp_target" "umask 077; cat > '$camp_remote/admin-bootstrap.json'"
           scp "${camp_ssh[@]}" camp-release.tar.gz camp-release.tar.gz.sha256 ops/camp-deploy.py ops/camp-diagnose.mjs "$camp_target:$camp_remote/"
           ssh "${camp_ssh[@]}" "$camp_target" "/opt/events/kiz-ai-camp-2026/production/current/node --env-file=/opt/events/kiz-ai-camp-2026/production/shared/app.env '$camp_remote/camp-diagnose.mjs'"
           ssh "${camp_ssh[@]}" "$camp_target" "python3 '$camp_remote/camp-deploy.py' '$camp_remote' '$GITHUB_SHA'"
@@ -57,7 +60,7 @@ jobs:
           const r=await fetch(origin+'/deployment.json?revision='+process.env.GITHUB_SHA,{cache:'no-store',signal:AbortSignal.timeout(20000)});
           const data=await r.json();
           if(data.revision!==process.env.GITHUB_SHA)throw Error('Published revision mismatch');
-          for(const [path,status]of [['/',200],['/healthz',200],['/api/v1/me/profile',401],['/api/forum/me',401]]){
+          for(const [path,status]of [['/',200],['/admin',200],['/api/admin/content',401],['/api/admin/registrations',401],['/healthz',200],['/api/v1/me/profile',401],['/api/forum/me',401]]){
             const response=await fetch(origin+path,{redirect:'error',signal:AbortSignal.timeout(20000)});
             if(response.status!==status)throw Error('Unexpected production response: '+path+' '+response.status);
           }

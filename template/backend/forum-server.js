@@ -1,4 +1,5 @@
 import {createSiteCms} from './site-cms.js';
+import {createAdminRoutes} from './admin-routes.js';
 import {validateCmsAnswers} from './site-cms-registration.js';
 import {createAutomaticProfiles} from './profile-auto-sync.js';
 import {createOssStorage,initializeFileStorage,readStoredFile,sha256} from './forum-oss.js';
@@ -42,7 +43,7 @@ export async function createForumServer(options={}){
  await unlink(resolve(dir,'service.lock'));lock=await open(resolve(dir,'service.lock'),'wx',0o600);
  }await lock.writeFile(String(process.pid));try{db=new DatabaseSync(resolve(dir,'recovery.sqlite'));db.exec(`PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY,value TEXT);CREATE TABLE IF NOT EXISTS objects(id TEXT PRIMARY KEY,owner TEXT NOT NULL,kind TEXT NOT NULL,data TEXT NOT NULL);CREATE INDEX IF NOT EXISTS objects_owner ON objects(owner,kind);CREATE TABLE IF NOT EXISTS snapshot_uploads(digest TEXT PRIMARY KEY,token TEXT NOT NULL);CREATE TABLE IF NOT EXISTS drafts(id TEXT PRIMARY KEY,owner TEXT NOT NULL,kind TEXT NOT NULL,data TEXT NOT NULL,updatedAt TEXT NOT NULL);CREATE TABLE IF NOT EXISTS operations(id TEXT PRIMARY KEY,owner TEXT NOT NULL,digest TEXT NOT NULL,payload TEXT NOT NULL,result TEXT);CREATE TABLE IF NOT EXISTS files(id TEXT PRIMARY KEY,owner TEXT NOT NULL,name TEXT NOT NULL,mime TEXT NOT NULL,content BLOB NOT NULL,token TEXT);`);const saved=db.prepare('SELECT value FROM meta WHERE key=?').get('meeting');if(saved&&saved.value!==meeting)throw new Error('Recovery directory belongs to another meeting.');db.prepare('INSERT OR IGNORE INTO meta VALUES(?,?)').run('meeting',meeting);}catch(e){db?.close();await lock.close();await unlink(resolve(dir,'service.lock'));throw e;}}
  if(db)initializeFileStorage(db);
- const cms=db?await createSiteCms({db,env,config}):null;
+ const cms=db?await createSiteCms({db,env,config,client:options.cmsClient}):null;
  const currentConfig=()=>cms?.current().config??config;
  function registrationData(input,phone,formal=false,resume=false){
   if(resume&&!input.formRevision)return profileData(input,phone,formal);
@@ -111,13 +112,14 @@ export async function createForumServer(options={}){
   put(record);db.prepare('DELETE FROM drafts WHERE id=? AND owner=?').run(record.id,owner.id);db.prepare('UPDATE operations SET result=? WHERE id=?').run(JSON.stringify(record),requestId);return record;
  }
  const publicRecord=record=>{const {remote,...safe}=record;const draft=db.prepare('SELECT data,updatedAt FROM drafts WHERE id=? AND owner=?').get(record.id,record.owner);const draftData=draft?decode(draft.data):null;const labels=ids=>(ids??[]).map(id=>{const file=db.prepare('SELECT id,name,size FROM files WHERE id=? AND owner=?').get(id,record.owner);return file??[...(record.files??[]),...(record.history??[]).flatMap(h=>h.files??[])].find(f=>f.id===id)??{id,name:'查看材料'};});const audits=record.kind==='submission'?(record.remote?reviewHistory(record):record.reviewHistory??[]):[];const pendingRow=db.prepare('SELECT id,payload FROM operations WHERE owner=? AND result IS NULL').all(record.owner).find(op=>decode(op.payload).id===record.id);const pending=pendingRow?{requestId:pendingRow.id,...decode(pendingRow.payload)}:null;return {...safe,...currentReview(record),...(record.kind==='registration'?{paymentStatus:['待确认','已缴费','未缴费','已退款'].includes(feishuText(remote?.fields?.['缴费状态']))?feishuText(remote.fields['缴费状态']):'待确认',paymentNote:feishuText(remote?.fields?.['缴费公开说明'])}:{}),...(pending?{pending}:{}),files:record.files??labels(record.data?.attachmentIds),reviewHistory:audits,history:(record.history??[]).map(h=>({...h,reviews:audits.filter(a=>a.version===h.version)})),...(draftData?{draft:{data:draftData,updatedAt:draft.updatedAt,files:labels(draftData.attachmentIds)}}:{})};};
+ const adminRoutes=db?await createAdminRoutes({db,env,cms,feishu,meeting,unpack,serial,body,send}):null;
  const server=http.createServer(async(req,res)=>{try{
   const url=new URL(req.url,'http://local'),path=url.pathname,method=req.method;
   res.setHeader('x-content-type-options','nosniff');res.setHeader('referrer-policy','same-origin');res.setHeader('x-frame-options','DENY');
   if(path==='/healthz'){res.writeHead(200,{'content-type':'text/plain'});return res.end('ok');}
   if(cms&&await cms.handle(req,res,url,send))return;
   if(path==='/api/site/content'&&method==='GET')return send(res,200,{config,revision:'bundled',pages:[],fields:[],formRevision:'',preview});
-  if(path.startsWith('/cms-preview/'))res.setHeader('x-robots-tag','noindex, nofollow');
+  if(path.startsWith('/cms-preview/')||path==='/admin'||path.startsWith('/admin/'))res.setHeader('x-robots-tag','noindex, nofollow');
   const publicFile=(config.publicFiles||[]).find(f=>path==='/api/forum/public/'+f.id);
   if(publicFile&&['GET','HEAD'].includes(method)){
    if(!storage)error(503,'资料暂时无法下载，请稍后重试');
@@ -127,6 +129,7 @@ export async function createForumServer(options={}){
    return res.end(method==='HEAD'?undefined:bytes);
   }
   if(!['GET','HEAD'].includes(method)&&req.headers.origin!==origin)error(403,'请求来源不受信任');
+  if(adminRoutes&&await adminRoutes(req,res,url))return;
   if(sso&&await sso.handle(req,res,url,body,send))return;
   if(path==='/api/forum/sso/status'&&method==='GET')return send(res,200,{enabled:false});
   if(authPaths.has(path)){if(preview)error(503,'账号服务尚未在此预览入口启用');if(!['GET','POST'].includes(method)||method==='GET'&&!path.endsWith('/me/profile'))error(405,'请求方法不支持');return await proxy(req,res,path);}

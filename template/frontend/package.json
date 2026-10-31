@@ -11,6 +11,10 @@
     "test:forum": "vite build --ssr test/forum-state.tsx --outDir ../.forum-test-build && node ../.forum-test-build/forum-state.js"
   },
   "dependencies": {
+    "@tiptap/extension-table": "^3.32.2",
+    "@tiptap/markdown": "^3.32.2",
+    "@tiptap/react": "^3.32.2",
+    "@tiptap/starter-kit": "^3.32.2",
     "liquid-glass-react": "1.1.1",
     "lucide-react": "0.544.0",
     "react": "19.2.0",
