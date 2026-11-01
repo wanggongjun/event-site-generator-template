@@ -1,6 +1,6 @@
 export const emptyProfile={paymentMethod:'',invoiceType:'',invoiceTitle:'',invoiceTaxId:'',invoiceAddress:'',invoicePhone:'',invoiceBank:'',invoiceAccount:'',dietaryNeeds:'',researchQuestions:'',termsAccepted:'',name:'',email:'',identityType:'',organization:'',department:'',majorCode:'',major:'',researchInterest:'',researchDirection:'',jobPosition:'',identityDescription:'',personalIntroduction:'',aiMode:'',ratings:{},attachmentIds:[]};
 
-// Camp professions are entered directly; the personnel category stays local to this form.
+// Camp professions are entered directly. Only the camp-specific hub column supplies its category.
 export function applyHubProfile(current:any,patch:Record<string,string>,directory:any,overwrite=false){
  const accepted=Object.fromEntries(Object.entries(patch).filter(([key])=>key!=='identityType'&&key!=='majorCode'&&(overwrite||!String(current[key]??'').trim())));
  if(Object.hasOwn(accepted,'major'))accepted.majorCode='';
@@ -13,7 +13,7 @@ export function registrationProfile(registration:any,prefill:any,cached:any,comm
  if(registration?.version)return profile;
  // The hub has already resolved source timestamps. Meeting snapshots are not current profiles.
  const usableCache=cached?.hydrated&&(!registration?.version||cached.baseVersion===registration.version);
- for(const key of ['name','organization','major','researchDirection','email','department']){
+ for(const key of ['name','organization','major','researchDirection','email','department','identityType']){
   const value=commonProfile?.[key];
   if(typeof value!=='string'||(!value.trim()&&key!=='department'))continue;
   // Preserve an in-progress edit only while its central baseline is still current.

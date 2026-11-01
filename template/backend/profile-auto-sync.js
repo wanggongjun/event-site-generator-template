@@ -1,10 +1,12 @@
-const mapping={name:'real_name',organization:'organization',major:'major',researchDirection:'research_direction',email:'email',department:'department'};
+import campIdentities from './camp-identities.json' with {type:'json'};
+const categoryLabels = new Set(campIdentities.map(category => category.label));
+const mapping={name:'real_name',organization:'organization',major:'major',researchDirection:'research_direction',email:'email',department:'department',identityType:'kiz_personnel_category'};
 export function createAutomaticProfiles({db,hub}){
  db.exec('CREATE TABLE IF NOT EXISTS profile_sync_jobs(id TEXT PRIMARY KEY,owner TEXT NOT NULL,payload TEXT NOT NULL)');
  let pending=Promise.resolve();
  const enqueue=fn=>{const job=pending.then(fn);pending=job.catch(()=>{});return job;};
  const payload=owner=>({phone:owner.phone,...(owner.subject?{subject:owner.subject}:{})});
- const form=answer=>Object.fromEntries(Object.entries(mapping).filter(([,field])=>(answer.profile?.[field]||field==='department'&&answer.profile?.[field]==='')).map(([key,field])=>[key,answer.profile[field]]));
+ const form=answer=>Object.fromEntries(Object.entries(mapping).filter(([key,field])=>key==='identityType'?categoryLabels.has(answer.profile?.[field]):(answer.profile?.[field]||field==='department'&&answer.profile?.[field]==='')).map(([key,field])=>[key,answer.profile[field]]));
  function apply(owner,answer){
   if(owner.tashan&&owner.profile&&Number.isInteger(answer.version)&&answer.version>=owner.profile.version){
    owner.profile={...owner.profile,...answer.profile,version:answer.version};
@@ -38,7 +40,7 @@ export function createAutomaticProfiles({db,hub}){
   async load(owner){return (await read(owner)).profile;},
   submitted(owner,record){
    if(!hub||record.kind!=='registration')return;
-   const changes=Object.fromEntries(Object.entries(mapping).filter(([key])=>typeof record.data[key]==='string'&&record.data[key].trim()).map(([key,field])=>[field,record.data[key].trim()]));
+   const changes=Object.fromEntries(Object.entries(mapping).filter(([key])=>key==='identityType'?categoryLabels.has(record.data[key]):typeof record.data[key]==='string'&&record.data[key].trim()).map(([key,field])=>[field,record.data[key].trim()]));
    if(!Object.keys(changes).length)return;
    const id=`registration:${record.id}:${record.version}`;
    db.prepare('INSERT OR IGNORE INTO profile_sync_jobs VALUES(?,?,?)').run(id,owner.id,JSON.stringify({...payload(owner),changes,event_id:id,source_updated_at:record.updatedAt}));

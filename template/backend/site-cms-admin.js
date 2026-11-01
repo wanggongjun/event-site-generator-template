@@ -102,7 +102,7 @@ export function createCmsAdmin({
         const old = before.get(row.record_id);
         if (!old && !/^new_[a-f0-9-]{36}$/.test(row.record_id))
           fail(400, "记录不属于本活动");
-        if (!old && key === "settings" && row.fields?.["设置标识"] !== "openAt")
+        if (!old && key === "settings" && !["openAt", "earlyBirdDate", "reportStartDate", "reportEndDate"].includes(row.fields?.["设置标识"]))
           fail(400, "不支持新增此项设置");
         const fields = {};
         for (const [name, value] of Object.entries(row.fields || {})) {

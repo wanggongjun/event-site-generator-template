@@ -107,8 +107,10 @@ export function App({preview=false}:{preview?:boolean}={}){
  useEffect(()=>{if(preview||accountRoute)return;let active=true;api('/api/v1/me/profile').then(()=>{if(active)setAuthenticated(true)}).catch(()=>{if(active)setAuthenticated(false)});return()=>{active=false}},[preview,location.pathname]);
  const entry={label:authenticated?'个人中心':'登录／注册',to:'/account?mode=login'};
  const datesCard=<InfoCard title="重要日期" mobileGlass><dl className="date-list">
+  {sourceConfig.cmsSchedule?.earlyBirdDate&&<div><dt>培训早鸟报名截止</dt><dd>{formatDate(sourceConfig.cmsSchedule.earlyBirdDate,config.event.timezone)}</dd></div>}
+  {config.attendance.closeAt&&<div><dt>培训报名截止</dt><dd>{formatDate(config.attendance.closeAt.slice(0,10),config.event.timezone)}</dd></div>}
+  {sourceConfig.cmsSchedule?.reportStartDate&&<div><dt>现场报到</dt><dd>{[...new Set([sourceConfig.cmsSchedule.reportStartDate,sourceConfig.cmsSchedule.reportEndDate].filter(Boolean))].map(value=>formatDate(value,config.event.timezone)).join('—')}</dd></div>}
   <div><dt>培训日期</dt><dd>{eventDates(config)}</dd></div>
-  {config.attendance.closeAt&&<div><dt>线上报名截止</dt><dd>{formatDate(config.attendance.closeAt,config.event.timezone)}</dd></div>}
  </dl></InfoCard>;
  const brandStyle=config.branding.primaryColor?({'--panshi-color-primary':config.branding.primaryColor,'--panshi-gradient-primary':`linear-gradient(135deg, ${config.branding.primaryColor} 0%, color-mix(in srgb, ${config.branding.primaryColor}, white 68%) 100%)`} as CSSProperties):undefined;
  const organizers=config.home.organizers.filter(x=>['主办单位','主办'].includes(x.role));

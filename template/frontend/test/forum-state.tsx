@@ -72,4 +72,6 @@ assert.equal(Object.hasOwn(sharedWrite.changes,'identities'),false);
 assert.equal(Object.hasOwn(sharedWrite.changes,'identityType'),false);
 fireEvent.click(view.getByText('将他山资料填入当前表单（尚未提交）'));
 assert.equal(Object.hasOwn(filled,'identityType'),false);cleanup();
+assert.equal(registrationProfile(null,{},null,{identityType:REGISTRATION_IDENTITY_OPTIONS[0]}).identityType,REGISTRATION_IDENTITY_OPTIONS[0]);
+assert.equal(registrationProfile(reg,{},null,{identityType:REGISTRATION_IDENTITY_OPTIONS[0]}).identityType,profile.identityType);
 console.log('Frontend: review states, preserved snapshots, pending-registration submission, progress, duplicate prevention, recovery and single/multiple category rendering passed.');

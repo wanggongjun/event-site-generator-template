@@ -613,7 +613,7 @@ export function Admin() {
                           type={
                             row.fields["设置标识"] === "primaryColor"
                               ? "color"
-                              : ["startDate", "endDate"].includes(
+                              : ["startDate", "endDate", "earlyBirdDate", "reportStartDate", "reportEndDate"].includes(
                                     row.fields["设置标识"],
                                   )
                                 ? "date"

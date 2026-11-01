@@ -134,6 +134,17 @@ if existing.returncode!=0 or previoushub:
    except Exception:pass
    time.sleep(2)
   else:raise RuntimeError('New camp profile service failed to start')
+  schema_check='''
+from sqlalchemy import inspect
+from app.storage.database.postgres_client import get_db_session
+from app.services import profile_hub_service as service
+assert 'kiz_personnel_category' in service.PROFILE_FIELDS
+with get_db_session() as db:
+ for table in ('user_profiles', 'profile_hub_external_profiles'):
+  assert 'kiz_personnel_category' in {column['name'] for column in inspect(db.connection()).get_columns(table)}
+'''
+  run(['docker','exec',hubname,'python','-c',schema_check],stdout=subprocess.DEVNULL)
+  print('Verified central and phone-only profile category columns',flush=True)
  except Exception:
   subprocess.run(['docker','rm','-f',hubname],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
   if previoushub:run(['docker','rename',previoushub,hubname]);run(['docker','start',hubname],stdout=subprocess.DEVNULL)

@@ -26,7 +26,13 @@ function Blocks({text}:{text:string}){
  }
  return <>{out}</>;
 }
+function ContactBlocks({text}:{text:string}){
+ return <div className="cms-contact-grid">{text.split(/^### /m).filter(part=>part.trim()).map((part,index)=>{
+  const end=part.indexOf('\n');
+  return <article className="cms-contact-card" key={index}><h3>{end<0?part:part.slice(0,end)}</h3><Blocks text={end<0?'':part.slice(end+1)}/></article>;
+ })}</div>;
+}
 export function SitePage({page}:{page:Page}){
  const body=page.body.replaceAll('{{培训日期}}',eventDates(config)).replaceAll('{{活动地点}}',config.event.location).replaceAll('{{园区地址}}',config.travel.address);
- const parts=body.split(/^## /m);return <div className="forum-notice cms-page" aria-label={page.label}>{page.images?.map((url,i)=><img className="cms-page-image" key={url} src={url} alt={page.label+'图片'+(i+1)}/>)}{parts.map((text,i)=>{if(!text.trim())return null;if(i===0)return <Blocks key={i} text={text}/>;const end=text.indexOf('\n'),title=end<0?text:text.slice(0,end);return <ContentSection key={i} title={title}><Blocks text={end<0?'':text.slice(end+1)}/></ContentSection>;})}</div>;
+ const parts=body.split(/^## /m);return <div className="forum-notice cms-page" aria-label={page.label}>{page.images?.map((url,i)=><img className="cms-page-image" key={url} src={url} alt={page.label+'图片'+(i+1)}/>)}{parts.map((text,i)=>{if(!text.trim())return null;if(i===0)return <Blocks key={i} text={text}/>;const end=text.indexOf('\n'),title=end<0?text:text.slice(0,end),content=end<0?'':text.slice(end+1);return <ContentSection key={i} title={title}>{(page.path==='/contact'||title.includes('联系方式'))&&/^### /m.test(content)?<ContactBlocks text={content}/>:<Blocks text={content}/>}</ContentSection>;})}</div>;
 }

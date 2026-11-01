@@ -11,7 +11,7 @@ export const cmsTables={
  history:{name:'发布记录',fields:[field('版本'),field('发布时间'),field('操作'),field('内容摘要'),field('来源版本')]}
 };
 export const builtinQuestions=[
- {id:'core',label:'姓名、手机号、人员类别及对应单位专业信息',type:'固定信息',required:true,help:'人员类别仅用于本次实训营，不同步他山统一资料库。基础信息不可删除或停用。'},
+ {id:'core',label:'姓名、手机号、人员类别及对应单位专业信息',type:'固定信息',required:true,help:'提交报名后同步通用资料，人员类别写入他山总库的“昆明实训营人员类别”专用列。基础信息不可删除或停用。'},
  {id:'attachmentIds',label:'学生证或在职证明',type:'证明材料',required:true},
  {id:'paymentMethod',label:'缴费方式',type:'单选',required:true,options:['对公转账','现场缴费']},
  {id:'invoiceType',label:'发票类型',type:'单选',required:true,options:['电子普通发票','增值税专用发票','无需发票']},
@@ -42,6 +42,7 @@ export function seedCms(config){
  const specs=[
  ['title','活动名称',config.event.title],['shortTitle','活动简称',config.event.shortTitle],['subtitle','副标题',config.event.subtitle],['technicalSupport','页脚技术支持',config.branding.technicalSupport||''],
  ['startDate','开始日期',config.event.startDate,'YYYY-MM-DD'],['endDate','结束日期',config.event.endDate,'YYYY-MM-DD'],['location','活动地点',config.event.location],['address','园区地址',config.travel.address],
+ ['earlyBirdDate','早鸟报名截止日期','','YYYY-MM-DD；留空不显示。'],['reportStartDate','现场报到开始日期','','YYYY-MM-DD；留空不显示。'],['reportEndDate','现场报到结束日期','','YYYY-MM-DD；留空不显示。'],
  ['openAt','报名开放',config.attendance.openAt||'','北京时间；留空表示立即开放。'],['closeAt','报名截止',config.attendance.closeAt,'北京时间，例如 2026-11-21 00:00'],['primaryColor','主题颜色',config.branding.primaryColor,'例如 #4CAF93'],
  ['banner','首页横幅',config.branding.backgroundImage,'直接向图片列上传 PNG/JPG/WebP；不要粘贴飞书临时下载链接。'],['logo','左上角标志',config.brandmarks?.[0]?.asset||'','图片列上传透明 PNG。'],
  ['organizers','页脚主办单位',config.home.organizers.filter(x=>['主办单位','主办'].includes(x.role)).map(x=>x.name).join('、')],['contacts','页脚联系咨询',config.contacts.map(x=>`${x.responsibility}：${x.name} ${x.email||x.phone||''}`).join('\n')],['feeNotice','报名页收费提示',n('收费标准')]
@@ -59,6 +60,14 @@ export function compileCms(rows,base,priorFields=[]){
  for(const r of rows.settings){const key=val(r,'设置标识');if(!allowed.has(key)||Object.hasOwn(settings,key))fail('网站设置标识无效或重复：'+key);settings[key]=clean(val(r,'内容'),10000,key);}
  if(!Object.hasOwn(settings,'technicalSupport'))settings.technicalSupport=config.branding.technicalSupport||'';
  if(!Object.hasOwn(settings,'openAt'))settings.openAt=config.attendance.openAt||'';
+ config.cmsSchedule={};
+ for(const key of ['earlyBirdDate','reportStartDate','reportEndDate']){
+  settings[key]??='';
+  const value=settings[key];
+  if(value&&(!/^\d{4}-\d{2}-\d{2}$/.test(value)||!Number.isFinite(Date.parse(value))||new Date(value).toISOString().slice(0,10)!==value))fail('日期应为有效的 YYYY-MM-DD');
+  config.cmsSchedule[key]=value;
+ }
+ if(settings.reportStartDate&&settings.reportEndDate&&settings.reportEndDate<settings.reportStartDate)fail('报到结束日期不能早于开始日期');
  for(const key of allowed)if(!Object.hasOwn(settings,key))fail('网站设置缺少：'+key);
  config.branding.technicalSupport=settings.technicalSupport;
  for(const key of ['title','shortTitle','location']){if(!settings[key])fail(key+'不能为空');config.event[key]=settings[key];}

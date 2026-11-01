@@ -26,7 +26,7 @@ test('all four camp categories validate and free-text majors reach the registrat
   assert.doesNotThrow(()=>profileData({...sample,identityType:'在职人员'},'13800000000',true,null,{allowLegacyIdentity:true}));
 });
 
-test('camp categories are excluded from automatic profile writeback and central prefill',async()=>{
+test('camp categories share a dedicated column while central identities remain separate',async()=>{
   const db=new DatabaseSync(':memory:');
   const requests=[];
   const sync=createAutomaticProfiles({db,hub:{sync:async payload=>{requests.push(payload);return{profile:{}};}}});
@@ -34,12 +34,28 @@ test('camp categories are excluded from automatic profile writeback and central 
     for(const [index,category] of campIdentities.entries())sync.submitted({id:'owner',phone:'13800000000'},{id:'reg',version:index+1,kind:'registration',updatedAt:'2026-11-01T00:00:00Z',data:{...sample,identityType:category.label}});
     await sync.close();
     assert.equal(requests.length,4);
-    for(const request of requests){
+    for(const [index,request] of requests.entries()){
       assert.equal(Object.hasOwn(request.changes,'identities'),false);
       assert.equal(Object.hasOwn(request.changes,'identityType'),false);
-      for(const category of campIdentities)assert.equal(JSON.stringify(request).includes(category.label),false);
+      assert.equal(request.changes.kiz_personnel_category,campIdentities[index].label);
     }
     assert.equal(profilePrefill({identities:['博士研究生']}).identityType,undefined);
     assert.equal(profilePrefill({identities:campIdentities.map(item=>item.label)}).identityType,undefined);
+  }finally{await sync.close();db.close();}
+});
+
+test('only valid camp categories prefill and historical generic identities are not sent to the new column',async()=>{
+  const db=new DatabaseSync(':memory:');
+  const requests=[];
+  let category=campIdentities[0].label;
+  const sync=createAutomaticProfiles({db,hub:{sync:async payload=>{requests.push(payload);return{profile:{kiz_personnel_category:category}};}}});
+  const owner={id:'owner',phone:'13800000000'};
+  try{
+    assert.equal((await sync.load(owner)).identityType,category);
+    category='博士研究生';
+    assert.equal((await sync.load(owner)).identityType,undefined);
+    sync.submitted(owner,{id:'old',version:1,kind:'registration',updatedAt:'2026-11-01T00:00:00Z',data:{...sample,identityType:'在职人员'}});
+    await sync.close();
+    assert.equal(Object.hasOwn(requests.at(-1).changes,'kiz_personnel_category'),false);
   }finally{await sync.close();db.close();}
 });
