@@ -7,8 +7,6 @@ const cookie=(name,value,age)=>`${name}=${value}; Path=/; Secure; HttpOnly; Same
 const equal=(a,b)=>typeof a==='string'&&typeof b==='string'&&a.length===b.length&&timingSafeEqual(Buffer.from(a),Buffer.from(b));
 export function profilePrefill(profile){
  const result={};for(const [local,remote]of Object.entries({name:'real_name',email:'email',organization:'organization',department:'department',majorCode:'major_code',major:'major',researchInterest:'research_interest',researchDirection:'research_direction',jobPosition:'job_position',identityDescription:'identity_description',personalIntroduction:'personal_introduction'}))if(profile?.[remote])result[local]=profile[remote];
- const choices=['本科生','硕士研究生','博士研究生','在站博士后','在职人员','其他'];
- const matches=profile?.identities?.filter(x=>choices.includes(x))??[];if(matches.length===1)result.identityType=matches[0];
  return result;
 }
 export function createForumSso({db,env,origin,transport=fetch,legacyIdentity,hasLegacyProfile=async()=>false,now=Date.now}){
@@ -50,7 +48,7 @@ export function createForumSso({db,env,origin,transport=fetch,legacyIdentity,has
     res.setHeader('set-cookie',[cookie(flowName,'',0),cookie('panshi_learner_session','',0),cookie(cookieName,browser,Math.max(0,value.expires_at-Math.floor(now()/1000)))]);res.writeHead(303,{location:'/account'});res.end();
    }catch{res.writeHead(303,{location:'/account?ssoError=1'});res.end();}return true;}
   if(path==='/api/forum/sso/logout'&&req.method==='POST'){const raw=readCookie(req,cookieName),row=db.prepare('DELETE FROM tashan_sessions WHERE hash=? RETURNING *').get(hash(raw));if(row)await request('session/revoke',{session_token:open(row.secret).token}).catch(()=>{});res.setHeader('set-cookie',cookie(cookieName,'',0));send(res,200,{ok:true});return true;}
-  if(path==='/api/forum/sso/profile'&&req.method==='POST'){limit(req);const current=await session(req);if(!current)fail(401,'请通过他山账号登录');const input=await body(req);if(!Number.isSafeInteger(input.expectedVersion)||!/^[-\w.:]{1,128}$/.test(input.idempotencyKey??'')||!input.changes||Array.isArray(input.changes)||Object.keys(input.changes).some(k=>!['real_name','email','organization','identities','department','major_code','major','research_interest','research_direction','job_position','identity_description','personal_introduction'].includes(k)))fail(400,'统一资料请求格式不正确');
+  if(path==='/api/forum/sso/profile'&&req.method==='POST'){limit(req);const current=await session(req);if(!current)fail(401,'请通过他山账号登录');const input=await body(req);if(!Number.isSafeInteger(input.expectedVersion)||!/^[-\w.:]{1,128}$/.test(input.idempotencyKey??'')||!input.changes||Array.isArray(input.changes)||Object.keys(input.changes).some(k=>!['real_name','email','organization','department','major_code','major','research_interest','research_direction','job_position','identity_description','personal_introduction'].includes(k)))fail(400,'统一资料请求格式不正确');
    // Archive both the local business data and incoming remote state before an explicit write.
    const records=db.prepare('SELECT data FROM objects WHERE owner=?').all(current.row.owner);
    db.prepare('INSERT INTO tashan_profile_history(owner,profile,created_at) VALUES(?,?,?)').run(current.row.owner,JSON.stringify({central:current.user.profile,local:records.map(r=>JSON.parse(r.data)),changes:input.changes}),new Date(now()).toISOString());

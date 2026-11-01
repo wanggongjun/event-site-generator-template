@@ -11,7 +11,7 @@ export const cmsTables={
  history:{name:'发布记录',fields:[field('版本'),field('发布时间'),field('操作'),field('内容摘要'),field('来源版本')]}
 };
 export const builtinQuestions=[
- {id:'core',label:'姓名、手机号、身份及对应单位专业信息',type:'固定信息',required:true,help:'统一账号与共享资料的固定信息，不可删除或停用。'},
+ {id:'core',label:'姓名、手机号、人员类别及对应单位专业信息',type:'固定信息',required:true,help:'人员类别仅用于本次实训营，不同步他山统一资料库。基础信息不可删除或停用。'},
  {id:'attachmentIds',label:'学生证或在职证明',type:'证明材料',required:true},
  {id:'paymentMethod',label:'缴费方式',type:'单选',required:true,options:['对公转账','现场缴费']},
  {id:'invoiceType',label:'发票类型',type:'单选',required:true,options:['电子普通发票','增值税专用发票','无需发票']},

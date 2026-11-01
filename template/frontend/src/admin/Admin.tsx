@@ -45,7 +45,7 @@ const detailLabels: Record<string, string> = {
   name: "姓名",
   phone: "手机号",
   email: "邮箱",
-  identityType: "身份",
+  identityType: "人员类别",
   organization: "单位",
   department: "院系／部门",
   major: "专业",

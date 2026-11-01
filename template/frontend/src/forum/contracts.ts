@@ -1,4 +1,6 @@
-export const REGISTRATION_IDENTITY_OPTIONS=['本科生','硕士研究生','博士研究生','在站博士后','在职人员','其他'] as const;
+import campIdentities from '../../../backend/camp-identities.json';
+export const REGISTRATION_IDENTITY_OPTIONS=campIdentities.map(item=>item.label);
+export const REGISTRATION_STUDENT_IDENTITIES=new Set(campIdentities.filter(item=>item.student).map(item=>item.label));
 export const FLASH_TYPE_OPTIONS=['Skill 分享','工具或应用展示','AI 实践经验分享','其他'] as const;
 export const REGISTRATION_PARTICIPATION_QUESTION_ID='unused-for-forum';
 export type RegistrationCoreFieldKey='name'|'email'|'identityType'|'organization'|'department'|'majorCode'|'major'|'researchInterest'|'researchDirection'|'jobPosition'|'identityDescription';

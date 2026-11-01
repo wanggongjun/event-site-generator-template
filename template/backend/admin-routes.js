@@ -193,7 +193,7 @@ export async function createAdminRoutes({
         name: "姓名",
         phone: "手机号",
         organization: "单位",
-        identity: "身份",
+        identity: "人员类别",
         status: "审核状态",
         feedback: "审核意见",
         paymentStatus: "缴费状态",

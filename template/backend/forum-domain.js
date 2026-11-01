@@ -1,8 +1,10 @@
 import {trackFor} from './event-policy.js';
 import {createHash} from 'node:crypto';
 import directory from './forum-directory.json' with {type:'json'};
+import campIdentities from './camp-identities.json' with {type:'json'};
 import {feishuText} from './feishu-client.js';
-export const identities=['本科生','硕士研究生','博士研究生','在站博士后','在职人员','其他'];
+export const identities=campIdentities.map(item=>item.label);
+const legacyIdentities=['本科生','硕士研究生','博士研究生','在站博士后','在职人员','其他'];
 export const skills=['python','git','cli','curl','context-engineering','agent-skill','agent-harness','rag','cnn','transformer'];
 export const flashTypes=['Skill 分享','工具或应用展示','AI 实践经验分享','其他'];
 export const statusLabels={under_review:'待审核',reviewing:'审核中',needs_materials:'需补充材料',accepted:'已录用',rejected:'未录用',withdrawn:'已撤回'};
@@ -21,7 +23,7 @@ export function profilePrefill(record){
  if(typeof intro==='string'&&intro.length<=5000)data.personalIntroduction=intro;
  return data;
 }
-export function profileData(body,phone,formal=false,cmsFields=null){
+export function profileData(body,phone,formal=false,cmsFields=null,{allowLegacyIdentity=false}={}){
  const definition=id=>cmsFields?.find(q=>q.id===id);
  const enabled=id=>!cmsFields||definition(id)?.enabled===true;
  const mandatory=id=>!cmsFields||definition(id)?.required===true;
@@ -29,8 +31,12 @@ export function profileData(body,phone,formal=false,cmsFields=null){
  const data=Object.fromEntries(keys.map(k=>[k,text(body[k]??'',['dietaryNeeds','researchQuestions'].includes(k)?2000:k==='personalIntroduction'?5000:['researchDirection','researchInterest','identityDescription'].includes(k)?2000:300)]));data.phone=phone;
  data.ratings=Object.fromEntries(skills.map(k=>[k,text(body.ratings?.[k]??'',50)]));data.attachmentIds=fileIds(body.attachmentIds);
  const required={本科生:['organization','department','majorCode','major'],硕士研究生:['organization','department','majorCode','major','researchDirection'],博士研究生:['organization','department','majorCode','major','researchDirection'],在站博士后:['organization','researchDirection'],在职人员:['organization','jobPosition'],其他:['identityDescription']};
+ for(const identity of campIdentities)required[identity.label]=identity.student?['organization','department','major']:['organization','jobPosition'];
  if(data.email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email))error(400,'请输入有效电子邮箱');
- if(formal){if(!data.name||!data.email||!identities.includes(data.identityType)||(required[data.identityType]??[]).some(k=>!data[k]))error(400,'请完整填写基本信息');}
+ if(formal){
+  if(!identities.includes(data.identityType)&&!(allowLegacyIdentity&&legacyIdentities.includes(data.identityType)))error(400,'请选择本次实训营的人员类别');
+  if(!data.name||!data.email||(required[data.identityType]??[]).some(k=>!data[k]))error(400,'请完整填写基本信息');
+ }
  if(formal&&['本科生','硕士研究生','博士研究生'].includes(data.identityType)){const programs=data.identityType==='本科生'?directory.undergraduateMajors:directory.graduatePrograms;if(!programs.some(p=>p.code===data.majorCode&&p.name===data.major))error(400,'请从对应专业名录选择有效代码和名称');}
  if(formal){
   if(enabled('paymentMethod')&&(mandatory('paymentMethod')||data.paymentMethod)&&!(definition('paymentMethod')?.options||['对公转账','现场缴费']).includes(data.paymentMethod))error(400,'请选择缴费方式');
@@ -45,6 +51,7 @@ export function profileData(body,phone,formal=false,cmsFields=null){
  if(formal)for(const q of cmsFields||[])if(q.enabled&&q.required&&['dietaryNeeds','researchQuestions'].includes(q.id)&&!data[q.id])error(400,'请填写：'+q.label);
  if(!enabled('invoiceType')||!data.invoiceType||data.invoiceType==='无需发票')for(const k of ['invoiceTitle','invoiceTaxId','invoiceAddress','invoicePhone','invoiceBank','invoiceAccount'])data[k]='';
  const applicable=new Set(required[data.identityType]??[]);if(data.identityType==='本科生')applicable.add('researchInterest');if(data.identityType==='其他')applicable.add('organization');
+ if(campIdentities.some(item=>item.label===data.identityType&&item.student)){applicable.add('researchInterest');applicable.add('researchDirection');}
  for(const key of new Set(Object.values(required).flat().concat('researchInterest')))if(!applicable.has(key))data[key]='';
  return data;
 }

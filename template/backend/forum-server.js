@@ -46,11 +46,11 @@ export async function createForumServer(options={}){
  const cms=db?await createSiteCms({db,env,config,client:options.cmsClient}):null;
  const currentConfig=()=>cms?.current().config??config;
  function registrationData(input,phone,formal=false,resume=false){
-  if(resume&&!input.formRevision)return profileData(input,phone,formal);
+  if(resume&&!input.formRevision)return profileData(input,phone,formal,null,{allowLegacyIdentity:true});
   const current=cms?.current();let fields=current?.fields;
   if(formal&&current&&input.formRevision!==current.formRevision&&!resume)error(409,'报名表已更新，请刷新页面后核对再提交；填写内容已保留。');
   if(resume&&input.formRevision)fields=cms?.fields(input.formRevision)??fields;
-  const data=profileData(input,phone,formal,fields);
+  const data=profileData(input,phone,formal,fields,{allowLegacyIdentity:resume});
   return current?validateCmsAnswers(input,data,fields,formal,input.formRevision||current.formRevision):data;
  }
  const verify=(actual,expected)=>feishu.verifyFields?feishu.verifyFields(actual,expected):verifyForumFields(actual,expected);

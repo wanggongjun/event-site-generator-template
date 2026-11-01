@@ -1,10 +1,12 @@
 import directory from './forum-directory.json' with {type:'json'};
 import {skills} from './forum-domain.js';
+import campIdentities from './camp-identities.json' with {type:'json'};
+const studentIdentities=new Set(['本科生','硕士研究生','博士研究生',...campIdentities.filter(item=>item.student).map(item=>item.label)]);
 export const skillNames=['Python','Git','CLI','curl','Context Engineering','Agent Skill','Agent Harness','RAG','CNN','Transformer'];
 export const registrationColumns=['缴费方式','发票类型','发票抬头','纳税人识别号','注册地址','注册电话','开户银行','银行账号','饮食禁忌','实际问题','隐私与费用规则版本','学校名称','手填学校','院系/培养单位','专业代码','专业名称','研究方向','研究兴趣','职务/职称','身份说明','AI主要使用方式',...skillNames.map(name=>name+'熟悉度'),'个人介绍','首次注册时间','最近提交时间','最近提交标识','资料快照附件','历史个人材料'];
 export const submissionColumns=['分论坛ID','首次提交时间','最近提交时间','正式提交标识','作者单位','参考文献','基金项目','其他说明','分享人','分享人单位','分享类型','处理时间','撤回时间','操作历史','历史附件','文字快照附件'];
 export function extraRegistrationFields(record,requestId){const d=record.data;return{'缴费方式':d.paymentMethod,'发票类型':d.invoiceType,'发票抬头':d.invoiceTitle,'纳税人识别号':d.invoiceTaxId,'注册地址':d.invoiceAddress,'注册电话':d.invoicePhone,'开户银行':d.invoiceBank,'银行账号':d.invoiceAccount,'饮食禁忌':d.dietaryNeeds,'实际问题':d.researchQuestions,'隐私与费用规则版本':d.termsAccepted,
- '学校名称':['本科生','硕士研究生','博士研究生'].includes(d.identityType)?d.organization:'','手填学校':['本科生','硕士研究生','博士研究生'].includes(d.identityType)&&!directory.universities.some(s=>s.name===d.organization)?d.organization:'',
+ '学校名称':studentIdentities.has(d.identityType)?d.organization:'','手填学校':studentIdentities.has(d.identityType)&&!directory.universities.some(s=>s.name===d.organization)?d.organization:'',
  '院系/培养单位':d.department,'专业代码':d.majorCode,'专业名称':d.major,'研究方向':d.researchDirection,'研究兴趣':d.researchInterest,'职务/职称':d.jobPosition,'身份说明':d.identityDescription,
  'AI主要使用方式':{'none':'基本不使用人工智能','chat':'主要通过对话方式使用人工智能','local-autonomous':'使用人工智能在本地环境中自主完成任务'}[d.aiMode]??'',
  ...Object.fromEntries(skills.map((key,i)=>[skillNames[i]+'熟悉度',{'unfamiliar':'不了解','basic':'了解并会简单使用','proficient':'熟练使用并掌握相关原理'}[d.ratings[key]]??''])),

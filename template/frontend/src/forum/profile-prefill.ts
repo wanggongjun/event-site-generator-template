@@ -1,13 +1,9 @@
 export const emptyProfile={paymentMethod:'',invoiceType:'',invoiceTitle:'',invoiceTaxId:'',invoiceAddress:'',invoicePhone:'',invoiceBank:'',invoiceAccount:'',dietaryNeeds:'',researchQuestions:'',termsAccepted:'',name:'',email:'',identityType:'',organization:'',department:'',majorCode:'',major:'',researchInterest:'',researchDirection:'',jobPosition:'',identityDescription:'',personalIntroduction:'',aiMode:'',ratings:{},attachmentIds:[]};
 
-// Match only an unambiguous exact name; registration still validates the directory.
+// Camp professions are entered directly; the personnel category stays local to this form.
 export function applyHubProfile(current:any,patch:Record<string,string>,directory:any,overwrite=false){
- const accepted=Object.fromEntries(Object.entries(patch).filter(([key])=>overwrite||!String(current[key]??'').trim()));
- if(Object.hasOwn(accepted,'major')||current.major&&!current.majorCode){
-  const programs=current.identityType==='本科生'?directory.undergraduateMajors:directory.graduatePrograms;
-  const matches=(programs||[]).filter((p:any)=>p.name===(accepted.major??current.major));
-  accepted.majorCode=matches.length===1?matches[0].code:'';
- }
+ const accepted=Object.fromEntries(Object.entries(patch).filter(([key])=>key!=='identityType'&&key!=='majorCode'&&(overwrite||!String(current[key]??'').trim())));
+ if(Object.hasOwn(accepted,'major'))accepted.majorCode='';
  return {...current,...accepted};
 }
 

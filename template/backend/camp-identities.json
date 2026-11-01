@@ -1,0 +1,6 @@
+[
+  {"label": "所内学生（本科生/硕士/博士）", "student": true},
+  {"label": "所内在职人员（科研/行政/支撑）", "student": false},
+  {"label": "所外学生（本科生/硕士/博士）", "student": true},
+  {"label": "所外在职人员（科研/企业/行政）", "student": false}
+]
