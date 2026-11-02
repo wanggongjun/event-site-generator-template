@@ -3,11 +3,31 @@ import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import campIdentities from '../camp-identities.json' with {type:'json'};
 import {profileData} from '../forum-domain.js';
+import {builtinQuestions} from '../site-cms-model.js';
 import {extraRegistrationFields} from '../forum-fields.js';
 import {createAutomaticProfiles} from '../profile-auto-sync.js';
 import {profilePrefill} from '../forum-sso.js';
 
-const sample={name:'校验人员',email:'check@example.invalid',organization:'示例单位',department:'示例院系',major:'跨学科自填专业',jobPosition:'研究人员',researchDirection:'示例方向',paymentMethod:'现场缴费',invoiceType:'无需发票',termsAccepted:'2026-10-30',attachmentIds:['00000000-0000-4000-8000-000000000000']};
+const sample={name:'校验人员',email:'check@example.invalid',organization:'示例单位',department:'示例院系',major:'跨学科自填专业',jobPosition:'研究人员',researchDirection:'示例方向',paymentMethod:'现场缴费',invoiceType:'无需发票',termsAccepted:'2026-11-02',attachmentIds:['00000000-0000-4000-8000-000000000000']};
+
+test('student proof remains mandatory while staff and optional invoice fields do not block registration',()=>{
+  const fields=builtinQuestions.map(field=>({...field,enabled:true,builtin:true}));
+  for(const category of campIdentities){
+    const input={...sample,identityType:category.label,paymentMethod:'',invoiceType:'增值税专用发票',attachmentIds:[]};
+    if(category.student){
+      assert.throws(()=>profileData(input,'13800000000',true,fields),/学生证或在读证明/);
+      input.attachmentIds=sample.attachmentIds;
+    }
+    assert.doesNotThrow(()=>profileData(input,'13800000000',true,fields));
+    for(const paymentMethod of ['微信／支付宝扫码','银行转账','对公转账','现场缴费']){
+      assert.doesNotThrow(()=>profileData({...input,paymentMethod},'13800000000',true,fields));
+    }
+    assert.throws(()=>profileData({...input,termsAccepted:'2026-10-30'},'13800000000',true,fields),/收费规则/);
+    assert.doesNotThrow(()=>profileData({...input,termsAccepted:'2026-10-30'},'13800000000',true,fields,{allowLegacyIdentity:true}));
+  }
+  const requiredFields=fields.map(field=>field.id==='invoiceTitle'?{...field,required:true}:field);
+  assert.throws(()=>profileData({...sample,identityType:campIdentities[1].label,invoiceType:'电子普通发票'},'13800000000',true,requiredFields),/发票抬头/);
+});
 
 test('all four camp categories validate and free-text majors reach the registration table',()=>{
   assert.equal(campIdentities.length,4);

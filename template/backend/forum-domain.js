@@ -26,7 +26,7 @@ export function profilePrefill(record){
 export function profileData(body,phone,formal=false,cmsFields=null,{allowLegacyIdentity=false}={}){
  const definition=id=>cmsFields?.find(q=>q.id===id);
  const enabled=id=>!cmsFields||definition(id)?.enabled===true;
- const mandatory=id=>!cmsFields||definition(id)?.required===true;
+ const mandatory=id=>cmsFields?definition(id)?.required===true:id==='attachmentIds';
  const keys=['name','email','identityType','organization','department','majorCode','major','researchInterest','researchDirection','jobPosition','identityDescription','personalIntroduction','aiMode','paymentMethod','invoiceType','invoiceTitle','invoiceTaxId','invoiceAddress','invoicePhone','invoiceBank','invoiceAccount','dietaryNeeds','researchQuestions','termsAccepted'];
  const data=Object.fromEntries(keys.map(k=>[k,text(body[k]??'',['dietaryNeeds','researchQuestions'].includes(k)?2000:k==='personalIntroduction'?5000:['researchDirection','researchInterest','identityDescription'].includes(k)?2000:300)]));data.phone=phone;
  data.ratings=Object.fromEntries(skills.map(k=>[k,text(body.ratings?.[k]??'',50)]));data.attachmentIds=fileIds(body.attachmentIds);
@@ -39,13 +39,16 @@ export function profileData(body,phone,formal=false,cmsFields=null,{allowLegacyI
  }
  if(formal&&['本科生','硕士研究生','博士研究生'].includes(data.identityType)){const programs=data.identityType==='本科生'?directory.undergraduateMajors:directory.graduatePrograms;if(!programs.some(p=>p.code===data.majorCode&&p.name===data.major))error(400,'请从对应专业名录选择有效代码和名称');}
  if(formal){
-  if(enabled('paymentMethod')&&(mandatory('paymentMethod')||data.paymentMethod)&&!(definition('paymentMethod')?.options||['对公转账','现场缴费']).includes(data.paymentMethod))error(400,'请选择缴费方式');
+  if(enabled('paymentMethod')&&(mandatory('paymentMethod')||data.paymentMethod)&&!(definition('paymentMethod')?.options||['微信／支付宝扫码','银行转账','对公转账','现场缴费']).includes(data.paymentMethod))error(400,'请选择缴费方式');
   if(enabled('invoiceType')&&(mandatory('invoiceType')||data.invoiceType)&&!(definition('invoiceType')?.options||['电子普通发票','增值税专用发票','无需发票']).includes(data.invoiceType))error(400,'请选择发票类型');
-  if(enabled('invoiceType')&&data.invoiceType&&data.invoiceType!=='无需发票'&&!data.invoiceTitle)error(400,'请填写发票抬头');
-  if(enabled('invoiceType')&&data.invoiceType==='增值税专用发票'&&['invoiceTaxId','invoiceAddress','invoicePhone','invoiceBank','invoiceAccount'].some(k=>!data[k]))error(400,'请完整填写增值税专用发票信息');
-  if(enabled('invoiceType')&&data.invoiceType&&data.invoiceType!=='无需发票'&&definition('invoiceTaxId')?.required&&!data.invoiceTaxId)error(400,'请填写纳税人识别号');
-  if(data.termsAccepted!=='2026-10-30')error(400,'请阅读并同意报名信息使用说明和收费规则');
-  if(enabled('attachmentIds')&&mandatory('attachmentIds')&&!data.attachmentIds.length)error(400,'请上传学生证或在职证明');
+  if(enabled('invoiceType')&&data.invoiceType&&data.invoiceType!=='无需发票'){
+   const invoiceFields=['invoiceTitle','invoiceTaxId'];
+   if(data.invoiceType==='增值税专用发票')invoiceFields.push('invoiceAddress','invoicePhone','invoiceBank','invoiceAccount');
+   for(const id of invoiceFields)if(enabled(id)&&mandatory(id)&&!data[id])error(400,'请填写：'+(definition(id)?.label||id));
+  }
+  if(data.termsAccepted!=='2026-11-02'&&!(allowLegacyIdentity&&data.termsAccepted==='2026-10-30'))error(400,'请阅读并同意报名信息使用说明和收费规则');
+  const student=campIdentities.some(item=>item.label===data.identityType&&item.student)||['本科生','硕士研究生','博士研究生'].includes(data.identityType);
+  if(student&&enabled('attachmentIds')&&mandatory('attachmentIds')&&!data.attachmentIds.length)error(400,'请上传有效学生证或在读证明');
  }
  for(const q of cmsFields||[])if(q.builtin&&!q.enabled&&q.id!=='core'&&q.id!=='attachmentIds')data[q.id]='';
  if(formal)for(const q of cmsFields||[])if(q.enabled&&q.required&&['dietaryNeeds','researchQuestions'].includes(q.id)&&!data[q.id])error(400,'请填写：'+q.label);

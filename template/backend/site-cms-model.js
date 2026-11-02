@@ -12,12 +12,12 @@ export const cmsTables={
 };
 export const builtinQuestions=[
  {id:'core',label:'姓名、手机号、人员类别及对应单位专业信息',type:'固定信息',required:true,help:'提交报名后同步通用资料，人员类别写入他山总库的“昆明实训营人员类别”专用列。基础信息不可删除或停用。'},
- {id:'attachmentIds',label:'学生证或在职证明',type:'证明材料',required:true},
- {id:'paymentMethod',label:'缴费方式',type:'单选',required:true,options:['对公转账','现场缴费']},
- {id:'invoiceType',label:'发票类型',type:'单选',required:true,options:['电子普通发票','增值税专用发票','无需发票']},
- {id:'invoiceTitle',label:'发票抬头',type:'短文本',required:true,help:'选择需要发票时显示。'},
- {id:'invoiceTaxId',label:'纳税人识别号／统一社会信用代码',type:'短文本',required:false,help:'专用发票时必填。'},
- ...[['invoiceAddress','注册地址'],['invoicePhone','注册电话'],['invoiceBank','开户银行'],['invoiceAccount','银行账号']].map(([id,label])=>({id,label,type:'短文本',required:true,help:'仅专用发票时显示，且必填。'})),
+ {id:'attachmentIds',label:'有效学生证或在读证明',type:'证明材料',required:true,help:'仅学生显示并要求上传，在职人员无需提供。'},
+ {id:'paymentMethod',label:'缴费方式',type:'单选',required:false,options:['微信／支付宝扫码','银行转账','对公转账','现场缴费']},
+ {id:'invoiceType',label:'发票类型',type:'单选',required:false,options:['电子普通发票','增值税专用发票','无需发票']},
+ {id:'invoiceTitle',label:'发票抬头',type:'短文本',required:false,help:'选择需要发票时显示，最终以缴费后扫码填写的信息为准。'},
+ {id:'invoiceTaxId',label:'纳税人识别号／统一社会信用代码',type:'短文本',required:false,help:'选填，最终以缴费后扫码填写的信息为准。'},
+ ...[['invoiceAddress','注册地址'],['invoicePhone','注册电话'],['invoiceBank','开户银行'],['invoiceAccount','银行账号']].map(([id,label])=>({id,label,type:'短文本',required:false,help:'仅专用发票时显示，选填。'})),
  {id:'dietaryNeeds',label:'饮食禁忌',type:'长文本',required:false},
  {id:'researchQuestions',label:'希望解决的实际问题（1—2个）',type:'长文本',required:false},
 ];
@@ -102,7 +102,6 @@ export function compileCms(rows,base,priorFields=[]){
  if(new Set(fields.map(q=>q.id)).size!==fields.length)fail('字段标识重复');if(fields.length>60)fail('报名问题最多60项');
  for(const b of builtinQuestions)if(!fields.some(q=>q.id===b.id))fail('系统字段不要删除，请改为停用：'+b.label);
  if(!fields.find(q=>q.id==='core').enabled||!fields.find(q=>q.id==='core').required)fail('身份与共享资料字段必须保留');
- for(const id of ['invoiceTitle','invoiceAddress','invoicePhone','invoiceBank','invoiceAccount'])if(!fields.find(q=>q.id===id).required)fail('开票字段按发票类型必填，请保留必填设置');
  const invoice=fields.find(q=>q.id==='invoiceType');if(invoice.enabled)for(const id of ['invoiceTitle','invoiceTaxId','invoiceAddress','invoicePhone','invoiceBank','invoiceAccount'])if(!fields.find(q=>q.id===id).enabled)fail('启用发票时，请保留全部开票字段；系统按发票类型显示');
  return {config,pages,fields,formRevision:hash(fields),settings};
 }

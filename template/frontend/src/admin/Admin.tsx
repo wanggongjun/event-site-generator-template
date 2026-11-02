@@ -762,6 +762,9 @@ export function Admin() {
                       }
                     />
                     <h3>页面图片</h3>
+                    <p className="admin-hint">
+                      {'在正文单独一行填写 {{图片1}} 或 {{图片2}}，可将对应图片放到该位置。编号按下方图片顺序。'}
+                    </p>
                     {images("pages", page)}
                   </>
                 )}
